@@ -123,6 +123,29 @@ avoid accidental non-comparable runs caused by mismatched size or too-short text
 length
 ```
 
+### 1.6 Dependency adjustment for server installability
+
+Files:
+
+```text
+requirements.txt
+```
+
+Changed:
+
+```text
+mmpycocotools -> pycocotools>=2.0.6
+```
+
+Reason:
+
+```text
+The copied old mmdet code can import through the standard `pycocotools` module
+surface, while `mmpycocotools` source builds are brittle on modern servers and
+failed during installation. This change improves environment installability
+without changing the SkyFind baseline model path.
+```
+
 ## 2. New Audit Utilities
 
 Added:
