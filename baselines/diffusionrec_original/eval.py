@@ -20,6 +20,10 @@ from engine import train_one_epoch, evaluate
 
 
 def normalize_skyfind_args(args):
+    if hasattr(args, 'disable_channel'):
+        args.use_channel = not args.disable_channel
+    if hasattr(args, 'disable_spatial'):
+        args.use_spatial = not args.disable_spatial
     if args.dataset != 'skyfind':
         return args
     if args.imsize != 640:
@@ -141,8 +145,6 @@ def get_args_parser():
 
 def main(args):
     args = normalize_skyfind_args(args)
-    args.use_channel=not args.disable_channel
-    args.use_spatial=not args.disable_spatial
     utils.init_distributed_mode(args)
     print("git:\n  {}\n".format(utils.get_sha()))
 
