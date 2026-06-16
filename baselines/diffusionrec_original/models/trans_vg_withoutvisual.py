@@ -170,9 +170,12 @@ class TransVGSwin(nn.Module):
     
         betas = cosine_beta_schedule(self.num_timesteps)
         alphas = 1. - betas
-        self.alphas_cumprod = torch.cumprod(alphas, dim=0).cuda()
-        self.sqrt_alphas_cumprod = torch.sqrt(self.alphas_cumprod).cuda()
-        self.sqrt_one_minus_alphas_cumprod = torch.sqrt(1. - self.alphas_cumprod).cuda()
+        alphas_cumprod = torch.cumprod(alphas, dim=0)
+        self.register_buffer('alphas_cumprod', alphas_cumprod)
+        self.register_buffer('sqrt_alphas_cumprod', torch.sqrt(alphas_cumprod))
+        self.register_buffer('sqrt_one_minus_alphas_cumprod', torch.sqrt(1. - alphas_cumprod))
+        self.register_buffer('sqrt_recip_alphas_cumprod', torch.sqrt(1. / alphas_cumprod))
+        self.register_buffer('sqrt_recipm1_alphas_cumprod', torch.sqrt(1. / alphas_cumprod - 1))
         self.scale = 2.0
         self.sampling_timesteps = 30
         #ddim parameter
