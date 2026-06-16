@@ -1,0 +1,32 @@
+# Python/cache files
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# OS/editor files
+.DS_Store
+.vscode/
+.idea/
+
+# Experiment outputs
+outputs/
+runs/
+wandb/
+logs/
+checkpoints/
+*.pth
+*.pt
+*.ckpt
+
+# Local datasets and generated artifacts
+data/
+datasets/
+predictions/
+visualizations/
+
+# Temporary files
+tmp/
+*.log
