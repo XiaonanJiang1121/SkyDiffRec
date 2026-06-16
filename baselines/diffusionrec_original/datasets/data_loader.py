@@ -186,12 +186,7 @@ def ralation_analysis(examples):
 def _build_word_selection_mask(expression, batch_a, seq_length):
     attention_mask = list(np.array(batch_a['attention_mask'][0], dtype=np.int64))
     actual_text_len = int(sum(attention_mask))
-    try:
-        words_mask = ralation_analysis(expression)
-        parser_fallback = False
-    except Exception:
-        words_mask = [1] * actual_text_len
-        parser_fallback = True
+    words_mask = ralation_analysis(expression)
 
     if len(words_mask) > actual_text_len:
         words_mask = words_mask[:actual_text_len]
@@ -203,7 +198,7 @@ def _build_word_selection_mask(expression, batch_a, seq_length):
     elif len(words_mask) < seq_length:
         words_mask = words_mask + [0] * (seq_length - len(words_mask))
 
-    return list(map(int, words_mask)), parser_fallback, actual_text_len
+    return list(map(int, words_mask)), actual_text_len
 
 
 
@@ -361,7 +356,6 @@ def convert_examples_to_features(examples, seq_length, tokenizer):
     """Loads a data file into a list of `InputBatch`s."""
     features = []
     #features_info = []
-    parser_fallback_count = 0
     token_truncated_count = 0
     for (ex_index, example) in enumerate(examples):
         #list_sentence = []
@@ -454,13 +448,11 @@ def convert_examples_to_features(examples, seq_length, tokenizer):
         input_mask = list(np.array(batch_a['attention_mask'][0]))
         if len(tokenizer.encode(prompt_tokens_a, add_special_tokens=True)) > seq_length:
             token_truncated_count += 1
-        words_mask, parser_fallback, _ = _build_word_selection_mask(
+        words_mask, _ = _build_word_selection_mask(
             expression=example.text_a,
             batch_a=batch_a,
             seq_length=seq_length,
         )
-        if parser_fallback:
-            parser_fallback_count += 1
 
         # The mask has 1 for real tokens and 0 for padding tokens. Only real
         # tokens are attended to.
@@ -483,7 +475,6 @@ def convert_examples_to_features(examples, seq_length, tokenizer):
 
 
     
-    batch_a['parser_fallback_count'] = parser_fallback_count
     batch_a['token_truncated_count'] = token_truncated_count
     return features, batch_a
 

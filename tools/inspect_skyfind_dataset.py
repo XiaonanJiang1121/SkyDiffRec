@@ -146,7 +146,7 @@ def inspect_dataset_instance(repo_root, data_root, split, bert_model, max_query_
             "[sample] idx={idx} img_id={img_id} file_name={file_name} "
             "image_shape={image_shape} mask_shape={mask_shape} "
             "bbox_norm={bbox} token_len={token_len} selected_len={selected_len} "
-            "parser_fallback_count={parser_fallback_count} token_truncated_count={token_truncated_count} "
+            "token_truncated_count={token_truncated_count} "
             "bbox_was_clamped={bbox_was_clamped}".format(
                 idx=idx,
                 img_id=int(img_id),
@@ -156,7 +156,6 @@ def inspect_dataset_instance(repo_root, data_root, split, bert_model, max_query_
                 bbox=np_array_to_list(bbox),
                 token_len=int(sum(word_mask)),
                 selected_len=int(sum(word_selection)),
-                parser_fallback_count=batch_a.get("parser_fallback_count", 0),
                 token_truncated_count=batch_a.get("token_truncated_count", 0),
                 bbox_was_clamped=meta["bbox_was_clamped"],
             )

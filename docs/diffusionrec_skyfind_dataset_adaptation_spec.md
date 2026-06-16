@@ -521,19 +521,15 @@ truncated_by_batch_a
 The prompted token length is the important limit for DiffusionREC because the
 model encodes the prompt-wrapped sentence, not only the raw SkyFind expression.
 
-### 5.7 Relation Parser Fallback
+### 5.7 Relation Parser Strict Mode
 
 `ralation_analysis()` uses `sng_parser`. Long SkyFind expressions may trigger
 parser failures.
 
-Minimum fallback:
+Experiment 0 must preserve the original DiffusionREC capability boundary:
 
-```python
-try:
-    words_mask = ralation_analysis(example.text_a)
-except Exception:
-    words_mask = [1] * actual_text_len + [0] * (seq_length - actual_text_len)
-    parser_fallback_count += 1
+```text
+No parser fallback is allowed in the training path.
 ```
 
 Mask semantics:
@@ -543,12 +539,18 @@ Mask semantics:
 0 = ignored / padding token
 ```
 
-Fallback must not mark padding tokens as selected. `actual_text_len` should be
-computed after tokenizer truncation and should not exceed `seq_length`.
+Implementation rule:
 
-If fallback statistics are hard to thread through cleanly, start with a local
-warning counter printed every N failures. This does not add a new reasoning
-module; it only prevents dataset loading from crashing.
+```python
+words_mask = ralation_analysis(example.text_a)
+```
+
+must succeed. The returned mask is then deterministically clipped or padded to
+match the tokenizer-side `actual_text_len`, and finally padded to `seq_length`
+with zeros on padding positions.
+
+If `sng_parser.parse(expression)` fails, Experiment 0 should fail in parser
+audit or dataset construction rather than silently changing model behavior.
 
 ### 5.8 Transform Metadata for Export
 
@@ -686,7 +688,6 @@ SkyFind diagnostics:
 Acc@0.7
 small/medium/large object buckets
 expression length buckets
-parser fallback ratio
 token truncation ratio
 ```
 
@@ -738,7 +739,7 @@ is required before reporting final Experiment 0 results.
 11. Set `max_query_len=128`.
 12. Add tokenizer truncation/padding to `seq_length` for `batch_a`.
 13. Clip/pad `words_mask` to `seq_length`.
-14. Add `sng_parser` fallback.
+14. Enforce strict `sng_parser` alignment without fallback.
 15. Keep `imsize=640`.
 16. Keep val batch size 1.
 17. Add a dataset smoke script or command.
@@ -758,7 +759,7 @@ Dataset:
 
 Tokenization:
   No assertion failure for long SkyFind expressions.
-  token_truncated_count and parser_fallback_count are reported.
+  token_truncated_count is reported.
 
 Model:
   One batch forward works.
@@ -778,7 +779,7 @@ The first implementation commit should contain:
 1. docs + README
 2. skyfind dataset branch
 3. tokenizer truncation fix
-4. parser fallback
+4. strict parser alignment
 5. dataset inspection smoke script
 ```
 
