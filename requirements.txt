@@ -12,7 +12,9 @@
 cython
 numpy
 scipy
-Pillow
+# Old detectron2 in this baseline still expects deprecated PIL constants such as
+# `Image.LINEAR`, which were removed in Pillow 10+.
+Pillow>=9.0,<10.0
 tqdm
 matplotlib
 opencv-python
