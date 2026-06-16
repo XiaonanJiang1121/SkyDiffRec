@@ -182,6 +182,13 @@ torch / torchvision / detectron2 should be installed with CUDA-matched builds
 for the target server before or together with the Python requirements.
 ```
 
+After installing Python packages, install the English spaCy model required by
+SceneGraphParser:
+
+```bash
+python -m spacy download en_core_web_sm
+```
+
 ## Audit Tools
 
 Available utilities:

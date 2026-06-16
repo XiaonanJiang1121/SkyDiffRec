@@ -27,6 +27,8 @@ icecream
 # `sng_parser`. Do not confuse it with the unrelated `sng-parser` package on PyPI.
 SceneGraphParser==0.1.0
 spacy>=3.6,<3.8
+# Install the English spaCy model separately after `pip install -r requirements.txt`:
+#   python -m spacy download en_core_web_sm
 # `mmpycocotools` source builds are brittle on modern servers and are not
 # required for the SkyFind baseline runtime path. We only need the standard
 # `pycocotools` import surface used by copied mmdet modules.
