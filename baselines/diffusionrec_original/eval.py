@@ -19,6 +19,17 @@ from datasets import build_dataset
 from engine import train_one_epoch, evaluate
 
 
+def normalize_skyfind_args(args):
+    if args.dataset != 'skyfind':
+        return args
+    if args.imsize != 640:
+        raise ValueError('SkyFind Experiment 0 requires --imsize 640, got {}'.format(args.imsize))
+    if args.max_query_len < 128:
+        print('SkyFind baseline requires max_query_len >= 128, overriding {} -> 128'.format(args.max_query_len))
+        args.max_query_len = 128
+    return args
+
+
 def get_args_parser():
     parser = argparse.ArgumentParser('Set transformer detector', add_help=False)
     parser.add_argument('--lr', default=1e-4, type=float)
@@ -92,7 +103,7 @@ def get_args_parser():
     parser.add_argument('--split_root', type=str, default='data',
                         help='location of pre-parsed dataset info')
     parser.add_argument('--dataset', default='referit', type=str,
-                        help='referit/flickr/unc/unc+/gref')
+                        help='referit/flickr/unc/unc+/gref/skyfind')
     parser.add_argument('--max_query_len', default=20, type=int,
                         help='maximum time steps (lang length) per batch')
     
@@ -129,6 +140,7 @@ def get_args_parser():
     return parser
 
 def main(args):
+    args = normalize_skyfind_args(args)
     args.use_channel=not args.disable_channel
     args.use_spatial=not args.disable_spatial
     utils.init_distributed_mode(args)

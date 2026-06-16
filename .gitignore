@@ -22,10 +22,9 @@ checkpoints/
 *.ckpt
 
 # Local datasets and generated artifacts
-data/
-datasets/
-predictions/
-visualizations/
+/data/
+/predictions/
+/visualizations/
 
 # Temporary files
 tmp/
