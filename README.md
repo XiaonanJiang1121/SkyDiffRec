@@ -71,6 +71,7 @@ Detailed migration notes:
 ```text
 DiffusionSkyFind/diffusionrec_skyfind_migration.md
 DiffusionSkyFind/docs/diffusionrec_skyfind_dataset_adaptation_spec.md
+DiffusionSkyFind/docs/diffusionrec_delta_summary.md
 ```
 
 ### Experiment 1: Long Expression Handling
@@ -165,3 +166,27 @@ DiffusionSkyFind/
 
 Avoid writing new SkyFind diffusion code inside `BioLoc/` unless it is a small
 utility explicitly shared by both projects.
+
+## Environment
+
+Server environment file:
+
+```text
+DiffusionSkyFind/requirements.txt
+```
+
+Important:
+
+```text
+torch / torchvision / detectron2 should be installed with CUDA-matched builds
+for the target server before or together with the Python requirements.
+```
+
+## Audit Tools
+
+Available utilities:
+
+```text
+DiffusionSkyFind/tools/inspect_skyfind_dataset.py
+DiffusionSkyFind/tools/audit_skyfind_parser.py
+```
