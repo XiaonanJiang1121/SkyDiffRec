@@ -14,6 +14,7 @@ sys.path.insert(0,'models/swin_model')
 from mmdet.models import build_detector
 from icecream import ic
 import torch
+from transformers import AutoConfig
 from models.trans_vg import MuModule
 
 
@@ -35,9 +36,12 @@ class QRNet(nn.Module):
         if cfg.get('custom_imports', None):
             from mmcv.utils import import_modules_from_strings
             import_modules_from_strings(**cfg['custom_imports'])
+        text_hidden_size = AutoConfig.from_pretrained(args.bert_model).hidden_size
         cfg.model.neck.type=args.soft_fpn
+        cfg.model.backbone.mu_dim = text_hidden_size
         cfg.model.backbone.use_spatial=args.use_spatial
         cfg.model.backbone.use_channel=args.use_channel
+        cfg.model.neck.mu_dim = text_hidden_size
         cfg.model.neck.use_spatial=args.use_spatial
         cfg.model.neck.use_channel=args.use_channel
      
@@ -83,4 +87,3 @@ if __name__=='__main__':
     pass
         
         
-
