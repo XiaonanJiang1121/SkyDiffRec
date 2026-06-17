@@ -95,7 +95,7 @@ def main():
             break
 
         total += 1
-        prompt_text = prompt_convert(expression)
+        prompt_text = prompt_convert(expression, tokenizer=tokenizer)
         raw_expression_words.append(len(expression.split()))
         raw_expression_token_lens.append(len(tokenizer.encode(expression, add_special_tokens=True)))
         prompted_len = len(tokenizer.encode(prompt_text, add_special_tokens=True))

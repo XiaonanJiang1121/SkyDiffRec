@@ -58,17 +58,14 @@ from .utils.nn import (
 class BERT(nn.Module):
     def __init__(self, name: str, train_bert: bool, hidden_dim: int, max_len: int, enc_num):
         super().__init__()
-        #pdb.set_trace()
-        if 'sup-roberta' in name:
-            self.num_channels = 768
-        else:
-            self.num_channels = 1024
+        config = AutoConfig.from_pretrained(name)
+        self.num_channels = config.hidden_size
         self.enc_num = enc_num
         #pdb.set_trace()
         self.bert = AutoModel.from_pretrained(name)
-        #self.bert = BertModel.from_pretrained(name)
-        #self.mlp = RobertaForMaskedLM.from_pretrained(name, config=BertConfig.from_pretrained(name)).cls.predictions.transform 
-        self.mlp = BertForMaskedLM.from_pretrained('bert-base-uncased', config=BertConfig.from_pretrained("bert-base-uncased")).cls.predictions.transform
+        # Build a transform head with dimensions matched to the loaded BERT family checkpoint.
+        bert_mlm = BertForMaskedLM(BertConfig.from_pretrained(name))
+        self.mlp = bert_mlm.cls.predictions.transform
         self.tokenizer = AutoTokenizer.from_pretrained(name, use_fast=True)
         #pdb.set_trace()
         #pos = self.bert.positional_embedding

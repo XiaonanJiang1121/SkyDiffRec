@@ -95,13 +95,18 @@ class InputFeatures_selection(object):
         self.words_mask = words_mask
         #self.input_type_ids = input_type_ids
 
-def prompt_convert(examples, template = "This sentence : ' *sent 0* ' means<mask>."):
+def prompt_convert(examples, tokenizer=None, template=None):
     # " This sentence : ' *sent 0* ' means<mask>." for sup-roberta
     # 'This sentence of "*sent 0*" means[MASK].' for sup-bert
     #prompt1 = 'This sentence of "'
     #prompt2 = '" means[MASK].'    
     #prompt_exapmple = prompt1 + examples + prompt2
     if len(examples) > 0 and examples[-1] not in '.?"\'': examples += '.'
+    if template is None:
+        if tokenizer is not None and tokenizer.mask_token == '[MASK]':
+            template = 'This sentence of "*sent 0*" means[MASK].'
+        else:
+            template = "This sentence : ' *sent 0* ' means<mask>."
     prompt_exapmple = template.replace('*sent 0*', examples).strip()
 
     return prompt_exapmple 
@@ -360,7 +365,7 @@ def convert_examples_to_features(examples, seq_length, tokenizer):
     for (ex_index, example) in enumerate(examples):
         #list_sentence = []
         
-        prompt_tokens_a = prompt_convert(example.text_a)
+        prompt_tokens_a = prompt_convert(example.text_a, tokenizer=tokenizer)
         #print('@@@@@@@@@@@@@@@@@@2')
         #print(prompt_tokens_a)
         #print(prompt_tokens_a_s)
