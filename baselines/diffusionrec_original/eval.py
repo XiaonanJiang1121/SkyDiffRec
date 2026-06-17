@@ -16,7 +16,7 @@ import datasets
 import utils.misc as utils
 from models import build_model
 from datasets import build_dataset
-from engine import train_one_epoch, evaluate
+from engine import train_one_epoch, evaluate, evaluate_dif
 
 
 def normalize_skyfind_args(args):
@@ -197,16 +197,22 @@ def main(args):
     start_time = time.time()
     
     # perform evaluation
-    accuracy = evaluate(args, model, data_loader_test, device)
+    if args.dataset == 'skyfind':
+        accuracy = evaluate_dif(args, model, data_loader_test, device)
+    else:
+        accuracy = evaluate(args, model, data_loader_test, device)
     
     if utils.is_main_process():
         total_time = time.time() - start_time
         total_time_str = str(datetime.timedelta(seconds=int(total_time)))
         print('Training time {}'.format(total_time_str))
 
-        log_stats = {'test_model:': args.eval_model,
-                    '%s_set_accuracy'%args.eval_set: accuracy,
-                    }
+        log_stats = {'test_model:': args.eval_model}
+        if isinstance(accuracy, dict):
+            for key, value in accuracy.items():
+                log_stats[f'{args.eval_set}_{key}'] = value
+        else:
+            log_stats['%s_set_accuracy'%args.eval_set] = accuracy
         print(log_stats)
         if args.output_dir and utils.is_main_process():
                 with (output_dir / "eval_log.txt").open("a") as f:

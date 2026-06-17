@@ -271,6 +271,7 @@ def main(args):
     
     start_time = time.time()
     best_accu = 0
+    best_accu_07 = 0
     # Creates a GradScaler once at the beginning of training.
     from torch.cuda.amp import GradScaler
     scaler = GradScaler()
@@ -303,6 +304,9 @@ def main(args):
             if val_stats['accu'] > best_accu:
                 checkpoint_paths.append(output_dir / 'best_checkpoint.pth')
                 best_accu=val_stats['accu']
+            if val_stats.get('accu_07', 0) > best_accu_07:
+                checkpoint_paths.append(output_dir / 'best_checkpoint_acc07.pth')
+                best_accu_07 = val_stats['accu_07']
             for checkpoint_path in checkpoint_paths:
                 utils.save_on_master({
                     'model': model_without_ddp.state_dict(),
@@ -310,7 +314,9 @@ def main(args):
                     'lr_scheduler': lr_scheduler.state_dict(),
                     'epoch': epoch,
                     'args': args,
-                    'val_accu': val_stats['accu']
+                    'val_accu': val_stats['accu'],
+                    'val_accu_07': val_stats.get('accu_07', 0),
+                    'val_miou': val_stats.get('miou', 0),
                 }, checkpoint_path)
 
     total_time = time.time() - start_time

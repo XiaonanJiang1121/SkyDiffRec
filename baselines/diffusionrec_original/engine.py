@@ -97,6 +97,8 @@ def train_one_epoch(args, model: torch.nn.Module, data_loader: Iterable,
             #pdb.set_trace()
             if type(output)==dict:
                 loss_dict = loss_utils.trans_vg_with_pruning_loss(output, target)
+                loss_sentence = torch.zeros((), device=device)
+                loss_vl = torch.zeros((), device=device)
             else:
                 loss_dict = loss_utils.trans_vg_loss_dif(output, target)
                 loss_sentence = loss_utils.sentence_similarity(denoised_sentence, valid_sentence)
@@ -111,6 +113,13 @@ def train_one_epoch(args, model: torch.nn.Module, data_loader: Iterable,
         
         # reduce losses over all GPUs for logging purposes
         loss_dict_reduced = utils.reduce_dict(loss_dict)
+        extra_loss_dict = utils.reduce_dict(
+            {
+                'loss_total': losses.detach(),
+                'loss_sentence': loss_sentence.mean().detach(),
+                'loss_vl': loss_vl.detach(),
+            }
+        )
         loss_dict_reduced_unscaled = {k: v
                                       for k, v in loss_dict_reduced.items()}
         losses_reduced_unscaled = sum(loss_dict_reduced_unscaled.values())
@@ -125,7 +134,7 @@ def train_one_epoch(args, model: torch.nn.Module, data_loader: Iterable,
         if max_norm > 0:
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm)
         optimizer.step()
-        metric_logger.update(loss=loss_value, **loss_dict_reduced_unscaled)
+        metric_logger.update(loss=loss_value, **loss_dict_reduced_unscaled, **extra_loss_dict)
         metric_logger.update(lr=optimizer.param_groups[0]["lr"])
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
@@ -201,10 +210,11 @@ def validate(args, model: torch.nn.Module, data_loader: Iterable, device: torch.
         #output, region_features, diffused_sentences, valid_info, vl_similarity = model(img_data, text_data, text_data_s, text_info_data, text_info_data_s, device, {})
         output = model(img_data, text_data, word_selection, text_info_data, target, device, {})
         #pdb.set_trace()
-        miou, accu = eval_utils.trans_vg_eval_dif(output, target.expand(output.size(0),target.size(1)))
+        miou, accu, accu_07 = eval_utils.trans_vg_eval_dif(output, target.expand(output.size(0),target.size(1)))
         #pdb.set_trace()
-        metric_logger.update_v2('miou', torch.mean(miou), batch_size)
-        metric_logger.update_v2('accu', accu, batch_size)
+        metric_logger.update_v2('miou', float(miou.item()), batch_size)
+        metric_logger.update_v2('accu', float(accu), batch_size)
+        metric_logger.update_v2('accu_07', float(accu_07), batch_size)
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
     stats = {k: meter.global_avg for k, meter in metric_logger.meters.items()}
@@ -261,4 +271,49 @@ def evaluate(args, model: torch.nn.Module, data_loader: Iterable, device: torch.
     accuracy = float(result_tensor[0]) / float(result_tensor[1])
     
     return accuracy
+
+
+@torch.no_grad()
+def evaluate_dif(args, model: torch.nn.Module, data_loader: Iterable, device: torch.device):
+    model.eval()
+
+    metric_logger = utils.MetricLogger(delimiter="  ")
+    header = 'Eval:'
+
+    for batch in metric_logger.log_every(data_loader, 10, header):
+        img_data, img_id, text_data, word_selection, text_info, target = batch
+        batch_size = img_data.tensors.size(0)
+
+        text_info_data = {}
+        max_length = 0
+        for i in range(0, len(text_info)):
+            if len(text_info[i]['input_ids'][0]) > max_length:
+                max_length = len(text_info[i]['input_ids'][0])
+
+        txt_input_ids = torch.zeros([len(text_info), max_length], dtype=torch.int64)
+        txt_attention_mask_ids = torch.zeros([len(text_info), max_length], dtype=torch.int64)
+        for i in range(0, len(text_info)):
+            txt_input_ids[i][0:len(text_info[i]['input_ids'][0])] = text_info[i]['input_ids'][0]
+            txt_attention_mask_ids[i][0:len(text_info[i]['attention_mask'][0])] = text_info[i]['attention_mask'][0]
+
+        text_info_data['input_ids'] = txt_input_ids
+        text_info_data['attention_mask'] = txt_attention_mask_ids
+
+        for k in text_info_data:
+            text_info_data[k] = text_info_data[k].to(device) if text_info_data[k] is not None else None
+
+        img_data = img_data.to(device)
+        text_data = text_data.to(device)
+        word_selection = word_selection.to(device)
+        target = target.to(device)
+
+        output = model(img_data, text_data, word_selection, text_info_data, target, device, {})
+        miou, accu, accu_07 = eval_utils.trans_vg_eval_dif(output, target.expand(output.size(0), target.size(1)))
+        metric_logger.update_v2('miou', float(miou.item()), batch_size)
+        metric_logger.update_v2('accu', float(accu), batch_size)
+        metric_logger.update_v2('accu_07', float(accu_07), batch_size)
+
+    metric_logger.synchronize_between_processes()
+    stats = {k: meter.global_avg for k, meter in metric_logger.meters.items()}
+    return stats
         

@@ -38,15 +38,12 @@ def trans_vg_eval_dif(pred_boxes, gt_boxes):
         iou = bbox_iou(pred_boxes[:,i,:], gt_boxes)
         ious[:,i] = iou 
     #pdb.set_trace()
-    max_ious = torch.max(ious, 1)
-    if torch.sum(max_ious[0] >= 0.5) > 0:
-        accu = float(1)
-    else:
-        accu = float(0)
+    max_ious = torch.max(ious, 1).values
+    accu_05 = torch.mean((max_ious >= 0.5).float()).item()
+    accu_07 = torch.mean((max_ious >= 0.7).float()).item()
+    miou = torch.mean(max_ious)
 
-
-    #accu = torch.sum(iou >= 0.5) / float(batch_size)
-    return max(max_ious[0]), accu
+    return miou, accu_05, accu_07
 
 def trans_vg_eval_test(pred_boxes, gt_boxes):
     pred_boxes = xywh2xyxy(pred_boxes)
