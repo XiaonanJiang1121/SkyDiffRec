@@ -50,6 +50,7 @@ def audit_raw_split(data_root, split):
         try:
             with Image.open(image_path) as image:
                 image_info_by_file[file_name] = image.size
+                image.load()
         except (UnidentifiedImageError, OSError, ValueError):
             corrupt_files.add(file_name)
 

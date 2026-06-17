@@ -661,6 +661,7 @@ class TransVGDataset(data.Dataset):
             try:
                 with Image.open(image_path) as image:
                     image_width, image_height = image.size
+                    image.load()
             except (UnidentifiedImageError, OSError, ValueError):
                 corrupt_files.add(file_name)
                 continue
@@ -760,7 +761,9 @@ class TransVGDataset(data.Dataset):
 
     def pull_skyfind_item(self, idx):
         sample = self.images[idx]
-        img = Image.open(sample['image_path']).convert("RGB")
+        with Image.open(sample['image_path']) as image:
+            image.load()
+            img = image.convert("RGB")
         if self.swin:
             img = Image.fromarray(np.asarray(img)[..., ::-1])
         bbox = torch.tensor(sample['bbox_xyxy_raw_clamped']).float()
