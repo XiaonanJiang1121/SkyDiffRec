@@ -25,7 +25,7 @@ def load_parser_functions(repo_root):
     return prompt_convert, ralation_analysis
 
 
-def iter_split_expressions(data_root, split):
+def iter_split_expressions(data_root, split, allowed_prefixes=None):
     split_file = build_split_file_map()[split]
     annotation_path = data_root / split_file
     with annotation_path.open("r", encoding="utf-8") as f:
@@ -33,12 +33,20 @@ def iter_split_expressions(data_root, split):
 
     if split == "train_aug":
         for idx, sample in enumerate(samples):
+            stem = Path(sample["fileName"]).stem
+            prefix = stem.split('_')[0] if '_' in stem else 'NUMERIC'
+            if allowed_prefixes is not None and prefix not in allowed_prefixes:
+                continue
             for field in ("expression_aug1", "expression_aug2"):
                 expression = sample.get(field, "")
                 if isinstance(expression, str) and expression.strip():
                     yield idx, sample["fileName"], field, expression.strip()
     else:
         for idx, sample in enumerate(samples):
+            stem = Path(sample["fileName"]).stem
+            prefix = stem.split('_')[0] if '_' in stem else 'NUMERIC'
+            if allowed_prefixes is not None and prefix not in allowed_prefixes:
+                continue
             expression = sample["expression"]
             if isinstance(expression, str) and expression.strip():
                 yield idx, sample["fileName"], "expression", expression.strip()
@@ -69,11 +77,13 @@ def main():
     parser.add_argument("--bert_model", required=True, type=str)
     parser.add_argument("--max_query_len", default=128, type=int)
     parser.add_argument("--limit", default=None, type=int, help="Optional max number of expressions to inspect.")
+    parser.add_argument("--allowed_prefixes", nargs='*', default=None)
     args = parser.parse_args()
 
     repo_root = Path(__file__).resolve().parents[1]
     prompt_convert, ralation_analysis = load_parser_functions(repo_root)
     tokenizer = AutoTokenizer.from_pretrained(args.bert_model, use_fast=True)
+    allowed_prefixes = set(args.allowed_prefixes) if args.allowed_prefixes else None
 
     total = 0
     parser_failed_count = 0
@@ -90,7 +100,7 @@ def main():
     failed_examples = []
     truncated_examples = []
 
-    for idx, file_name, field_name, expression in iter_split_expressions(args.data_root, args.split):
+    for idx, file_name, field_name, expression in iter_split_expressions(args.data_root, args.split, allowed_prefixes=allowed_prefixes):
         if args.limit is not None and total >= args.limit:
             break
 

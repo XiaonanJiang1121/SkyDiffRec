@@ -110,7 +110,7 @@ def audit_raw_split(data_root, split):
     )
 
 
-def inspect_dataset_instance(repo_root, data_root, split, bert_model, max_query_len, imsize, limit, transform_split):
+def inspect_dataset_instance(repo_root, data_root, split, bert_model, max_query_len, imsize, limit, transform_split, allowed_prefixes):
     baseline_root = repo_root / "baselines" / "diffusionrec_original"
     sys.path.insert(0, str(baseline_root))
 
@@ -133,6 +133,7 @@ def inspect_dataset_instance(repo_root, data_root, split, bert_model, max_query_
         transform=transform,
         max_query_len=max_query_len,
         bert_model=bert_model,
+        skyfind_allowed_prefixes=allowed_prefixes,
     )
 
     print("[dataset-init] len={} split={} transform_split={}".format(len(dataset), split, transform_split))
@@ -179,6 +180,7 @@ def main():
     parser.add_argument("--imsize", default=640, type=int)
     parser.add_argument("--limit", default=5, type=int)
     parser.add_argument("--transform_split", default="val", choices=("train", "val"))
+    parser.add_argument("--allowed_prefixes", nargs='*', default=None)
     args = parser.parse_args()
 
     repo_root = Path(__file__).resolve().parents[1]
@@ -193,6 +195,7 @@ def main():
             imsize=args.imsize,
             limit=args.limit,
             transform_split=args.transform_split,
+            allowed_prefixes=args.allowed_prefixes,
         )
 
 

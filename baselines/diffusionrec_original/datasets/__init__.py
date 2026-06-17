@@ -65,4 +65,5 @@ def build_dataset(split, args):
                         split=split,
                         bert_model=args.bert_model,
                         transform=make_transforms(args, split),
-                        max_query_len=args.max_query_len)
+                        max_query_len=args.max_query_len,
+                        skyfind_allowed_prefixes=getattr(args, 'skyfind_allowed_prefixes', None))

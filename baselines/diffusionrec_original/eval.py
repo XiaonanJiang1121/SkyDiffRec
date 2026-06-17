@@ -110,6 +110,8 @@ def get_args_parser():
                         help='referit/flickr/unc/unc+/gref/skyfind')
     parser.add_argument('--max_query_len', default=20, type=int,
                         help='maximum time steps (lang length) per batch')
+    parser.add_argument('--skyfind_allowed_prefixes', nargs='*', default=None,
+                        help='Optional list of SkyFind source prefixes to keep in train/val/test, e.g. Visdrone UAVDT')
     
     # dataset parameters
     parser.add_argument('--output_dir', default='./outputs',

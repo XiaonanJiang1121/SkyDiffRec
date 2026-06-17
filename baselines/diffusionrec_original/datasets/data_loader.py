@@ -528,7 +528,7 @@ class TransVGDataset(data.Dataset):
     def __init__(self, data_root, split_root='data', dataset='referit', 
                  transform=None, return_idx=False, testmode=False,
                  split='train', max_query_len=128, lstm=False, 
-                 bert_model='auto',swin=False):
+                 bert_model='auto',swin=False, skyfind_allowed_prefixes=None):
         self.images = []
         self.data_root = data_root
         self.split_root = split_root
@@ -540,6 +540,11 @@ class TransVGDataset(data.Dataset):
         self.split = split
         self.skyfind_meta_by_img_id = {}
         self.skyfind_stats = {}
+        self.skyfind_allowed_prefixes = None
+        if split == 'train' and skyfind_allowed_prefixes:
+            self.skyfind_allowed_prefixes = {
+                prefix.strip() for prefix in skyfind_allowed_prefixes if prefix and prefix.strip()
+            }
         #sup-bert
         #pdb.set_trace()
         #print('###############')
@@ -676,9 +681,15 @@ class TransVGDataset(data.Dataset):
         skipped_invalid_bbox = 0
         clamped_bbox_count = 0
         non_numeric_file_name_count = 0
+        skipped_filtered_prefix_samples = 0
 
         for sample in raw_samples:
             file_name = sample['fileName']
+            stem = Path(file_name).stem
+            prefix = stem.split('_')[0] if '_' in stem else 'NUMERIC'
+            if self.skyfind_allowed_prefixes is not None and prefix not in self.skyfind_allowed_prefixes:
+                skipped_filtered_prefix_samples += 1
+                continue
             if file_name in missing_files:
                 skipped_missing += 1
                 continue
@@ -704,14 +715,15 @@ class TransVGDataset(data.Dataset):
                 continue
             if was_clamped:
                 clamped_bbox_count += 1
-            if not Path(file_name).stem.isdigit():
+            if not stem.isdigit():
                 non_numeric_file_name_count += 1
 
             img_id = len(self.images)
-            raw_img_id = Path(file_name).stem
+            raw_img_id = stem
             sample_record = {
                 'img_id': img_id,
                 'file_name': file_name,
+                'source_prefix': prefix,
                 'raw_img_id': raw_img_id,
                 'image_path': image_info['image_path'],
                 'image_width': image_width,
@@ -724,6 +736,7 @@ class TransVGDataset(data.Dataset):
             self.images.append(sample_record)
             self.skyfind_meta_by_img_id[img_id] = {
                 'file_name': file_name,
+                'source_prefix': prefix,
                 'raw_img_id': raw_img_id,
                 'expression': expression.strip(),
                 'gt_bbox_xyxy_raw_original': original_bbox,
@@ -741,6 +754,8 @@ class TransVGDataset(data.Dataset):
             'validated_images': len(image_info_by_file),
             'missing_images': len(missing_files),
             'corrupt_images': len(corrupt_files),
+            'allowed_prefixes': sorted(self.skyfind_allowed_prefixes) if self.skyfind_allowed_prefixes is not None else None,
+            'skipped_filtered_prefix_samples': skipped_filtered_prefix_samples,
             'skipped_missing_samples': skipped_missing,
             'skipped_corrupt_samples': skipped_corrupt,
             'skipped_invalid_bbox_samples': skipped_invalid_bbox,
@@ -752,6 +767,8 @@ class TransVGDataset(data.Dataset):
             '[SkyFindDataset] split={split} raw_samples={raw_samples} kept_samples={kept_samples} '
             'unique_images={unique_images} validated_images={validated_images} '
             'missing_images={missing_images} corrupt_images={corrupt_images} '
+            'allowed_prefixes={allowed_prefixes} '
+            'skipped_filtered_prefix_samples={skipped_filtered_prefix_samples} '
             'skipped_missing_samples={skipped_missing_samples} '
             'skipped_corrupt_samples={skipped_corrupt_samples} '
             'skipped_invalid_bbox_samples={skipped_invalid_bbox_samples} '
