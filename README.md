@@ -2,6 +2,14 @@
 
 Date: 2026-06-16
 
+## VLM-SkyFind
+
+The repository also contains a training-free, direct-box evaluation harness for
+five 7B/8B VLMs on the SkyFind Val and Test splits. See
+[`docs/vlm_skyfind_evaluation.md`](docs/vlm_skyfind_evaluation.md) for the
+protocol, model adapters, resumable inference commands, two-GPU sharding, and
+diagnostic metrics.
+
 This folder records the diffusion-native SkyFind research direction. It is kept
 separate from `BioLoc/` so that diffusion experiments do not become coupled to
 the AerialVG-style BioLoc baseline.
