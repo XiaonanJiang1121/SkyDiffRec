@@ -17,4 +17,5 @@ corrupt images in either Val or Test are logged and skipped without interrupting
 the split.
 
 See [`docs/vlm_skyfind_evaluation.md`](docs/vlm_skyfind_evaluation.md) for the
-evaluation protocol and server commands.
+evaluation protocol and server commands. See [`SmokeTest.md`](SmokeTest.md) for
+the five model smoke commands, runtime setup, and resolved server errors.

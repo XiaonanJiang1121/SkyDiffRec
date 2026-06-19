@@ -6,7 +6,7 @@ _ADAPTERS = {
     "deepseek-vl-7b": ("vlm_skyfind.adapters.deepseek", "DeepSeekVLAdapter"),
     "internvl2.5-8b": ("vlm_skyfind.adapters.internvl", "InternVL25Adapter"),
     "llava-onevision-7b": ("vlm_skyfind.adapters.llava", "LlavaOneVisionAdapter"),
-    "geochat-7b": ("vlm_skyfind.adapters.llava", "GeoChatAdapter"),
+    "geochat-7b": ("vlm_skyfind.adapters.geochat", "GeoChatAdapter"),
 }
 
 

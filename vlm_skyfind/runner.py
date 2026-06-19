@@ -56,6 +56,10 @@ def _write_or_validate_protocol(args, output_path):
         "image_dir": str(Path(args.image_dir).resolve()) if args.image_dir else None,
         "source_prefixes": args.source_prefixes,
     }
+    if args.model == "llava-onevision-7b":
+        protocol["llava_model_name"] = getattr(
+            args, "llava_model_name", "llava_qwen"
+        )
     if args.resume and protocol_path.exists():
         with protocol_path.open("r", encoding="utf-8") as handle:
             previous = json.load(handle)
@@ -96,6 +100,7 @@ def run(args):
         attn_implementation=args.attn_implementation,
         max_tiles=args.internvl_max_tiles,
         conversation_mode=args.conversation_mode,
+        llava_model_name=getattr(args, "llava_model_name", "llava_qwen"),
     )
 
     mode = "a" if args.resume else "w"

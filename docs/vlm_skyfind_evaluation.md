@@ -62,17 +62,35 @@ From the project root:
 ```bash
 pip install -r requirements-vlm.txt
 export PYTHONPATH="$PWD:${PYTHONPATH:-}"
+export OMP_NUM_THREADS=1
+export MKL_NUM_THREADS=1
 ```
 
 Qwen2.5-VL and InternVL use Transformers plus their remote model code.
 DeepSeek-VL additionally requires the official `deepseek_vl` Python package.
 LLaVA-OneVision requires the official LLaVA-NeXT package, imported as `llava`.
-GeoChat also uses a LLaVA-compatible runtime; install its official repository
-when its model code differs from the installed LLaVA-NeXT version.
+GeoChat requires its own official package, imported as `geochat`; it must not
+reuse the LLaVA-NeXT adapter. Install these pinned official source runtimes as
+needed:
+
+```bash
+bash scripts/setup_model_runtimes.sh deepseek
+bash scripts/setup_model_runtimes.sh llava
+bash scripts/setup_model_runtimes.sh geochat
+```
+
+The setup script installs each source tree with `--no-deps`, so it does not
+downgrade the CUDA-matched PyTorch or the shared Transformers installation.
+It installs only the small missing direct dependencies separately. The runner
+also replaces malformed inherited `OMP_NUM_THREADS`/`MKL_NUM_THREADS` values
+with `1` before importing PyTorch.
 
 These upstream projects can require different Transformers versions. If one
 combined environment cannot load all five models, use one environment per model
-family. The JSONL format and evaluator are environment-independent.
+family rather than downgrading a working Qwen environment. LLaVA-OneVision and
+GeoChat keep their vision towers in FP16, so their commands must include
+`--dtype float16`. Python 3.10 is the safest common denominator for these older
+upstream runtimes. The JSONL format and evaluator are environment-independent.
 
 ## 4. Smoke Test First
 
@@ -84,6 +102,8 @@ export PROJECT=/root/autodl-tmp/VLMSkyFind
 export DATA_ROOT=/root/autodl-tmp/BioLoc/data/SkyFind_data
 cd "$PROJECT"
 export PYTHONPATH="$PWD:${PYTHONPATH:-}"
+export OMP_NUM_THREADS=1
+export MKL_NUM_THREADS=1
 
 CUDA_VISIBLE_DEVICES=0 python scripts/run_vlm_skyfind.py \
   --model qwen2.5-vl-7b \
@@ -99,6 +119,12 @@ Inspect raw answers and parse failures before launching a full split:
 ```bash
 sed -n '1,5p' predictions/qwen2.5-vl-7b_val_smoke.jsonl
 ```
+
+All five copy-paste smoke commands and the resolved server errors are kept in
+[`../SmokeTest.md`](../SmokeTest.md). LLaVA-OneVision explicitly uses
+`--llava-model-name llava_qwen --dtype float16`; deriving the architecture from
+the local directory name `llava-onevision-7b` would select the wrong upstream
+model class.
 
 `--model-path` is optional: by default the runner resolves the selected model
 from `configs/vlm_models.json`. `--data-root` also defaults to the BioLoc path

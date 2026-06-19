@@ -1,20 +1,26 @@
 """DeepSeek-VL 7B adapter."""
 
 from .base import BaseVLMAdapter, torch_dtype
+from .runtime import missing_runtime
 
 
 class DeepSeekVLAdapter(BaseVLMAdapter):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         import torch
-        from deepseek_vl.models import MultiModalityCausalLM, VLChatProcessor
-        from deepseek_vl.utils.io import load_pil_images
+        from transformers import AutoModelForCausalLM
+
+        try:
+            from deepseek_vl.models import VLChatProcessor
+            from deepseek_vl.utils.io import load_pil_images
+        except ModuleNotFoundError as exc:
+            missing_runtime("deepseek_vl", "deepseek", exc)
 
         self.torch = torch
         self.load_pil_images = load_pil_images
         self.processor = VLChatProcessor.from_pretrained(self.model_path)
         self.tokenizer = self.processor.tokenizer
-        self.model = MultiModalityCausalLM.from_pretrained(
+        self.model = AutoModelForCausalLM.from_pretrained(
             self.model_path, trust_remote_code=True
         ).to(dtype=torch_dtype(self.dtype), device=self.device).eval()
 

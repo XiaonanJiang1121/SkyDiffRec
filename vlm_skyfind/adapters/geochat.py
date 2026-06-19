@@ -1,4 +1,4 @@
-"""LLaVA-OneVision adapter."""
+"""GeoChat-7B adapter using the model's own official runtime."""
 
 from PIL import Image
 
@@ -6,32 +6,37 @@ from .base import BaseVLMAdapter
 from .runtime import missing_runtime
 
 
-class LlavaAdapter(BaseVLMAdapter):
-    default_conversation_mode = "qwen_1_5"
+class GeoChatAdapter(BaseVLMAdapter):
+    default_conversation_mode = "llava_v1"
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         import torch
 
         try:
-            from llava.constants import (
+            from geochat.constants import (
                 DEFAULT_IMAGE_TOKEN,
                 DEFAULT_IM_END_TOKEN,
                 DEFAULT_IM_START_TOKEN,
                 IMAGE_TOKEN_INDEX,
             )
-            from llava.conversation import conv_templates
-            from llava.mm_utils import process_images, tokenizer_image_token
-            from llava.model.builder import load_pretrained_model
+            from geochat.conversation import conv_templates
+            from geochat.mm_utils import (
+                get_model_name_from_path,
+                process_images,
+                tokenizer_image_token,
+            )
+            from geochat.model.builder import load_pretrained_model
+            from geochat.utils import disable_torch_init
         except ModuleNotFoundError as exc:
-            missing_runtime("llava", "llava", exc)
+            missing_runtime("geochat", "geochat", exc)
 
         if self.dtype != "float16":
             raise ValueError(
-                "LLaVA-OneVision's official loader keeps its vision tower in FP16; "
-                "rerun with --dtype float16"
+                "GeoChat's official loader uses FP16; rerun with --dtype float16"
             )
 
+        disable_torch_init()
         self.torch = torch
         self.default_image_token = DEFAULT_IMAGE_TOKEN
         self.default_image_start_token = DEFAULT_IM_START_TOKEN
@@ -40,14 +45,13 @@ class LlavaAdapter(BaseVLMAdapter):
         self.conv_templates = conv_templates
         self.process_images = process_images
         self.tokenizer_image_token = tokenizer_image_token
-        model_name = self.options.get("llava_model_name") or "llava_qwen"
+        model_name = get_model_name_from_path(self.model_path)
         loaded = load_pretrained_model(
             self.model_path,
             None,
             model_name,
             device_map=self.device,
-            torch_dtype=self.dtype,
-            attn_implementation=self.options.get("attn_implementation", "sdpa"),
+            device=self.device,
         )
         self.tokenizer, self.model, self.image_processor = loaded[:3]
         self.model.eval()
@@ -58,14 +62,18 @@ class LlavaAdapter(BaseVLMAdapter):
     def generate(self, image_path, prompt):
         with Image.open(image_path) as image:
             image = image.convert("RGB")
-            image_size = image.size
             image_tensor = self.process_images(
                 [image], self.image_processor, self.model.config
             )
         if isinstance(image_tensor, list):
-            image_tensor = [tensor.to(self.model.device, dtype=self.model.dtype) for tensor in image_tensor]
+            image_tensor = [
+                tensor.to(self.model.device, dtype=self.model.dtype)
+                for tensor in image_tensor
+            ]
         else:
-            image_tensor = image_tensor.to(self.model.device, dtype=self.model.dtype)
+            image_tensor = image_tensor.to(
+                self.model.device, dtype=self.model.dtype
+            )
 
         conversation = self.conv_templates[self.conversation_mode].copy()
         image_token = self.default_image_token
@@ -79,9 +87,8 @@ class LlavaAdapter(BaseVLMAdapter):
             conversation.roles[0], f"{image_token}\n{prompt}"
         )
         conversation.append_message(conversation.roles[1], None)
-        rendered_prompt = conversation.get_prompt()
         input_ids = self.tokenizer_image_token(
-            rendered_prompt,
+            conversation.get_prompt(),
             self.tokenizer,
             self.image_token_index,
             return_tensors="pt",
@@ -90,20 +97,15 @@ class LlavaAdapter(BaseVLMAdapter):
             output_ids = self.model.generate(
                 input_ids,
                 images=image_tensor,
-                image_sizes=[image_size],
                 max_new_tokens=self.max_new_tokens,
                 do_sample=False,
                 use_cache=True,
             )
         if (
             output_ids.shape[1] > input_ids.shape[1]
-            and self.torch.equal(output_ids[:, :input_ids.shape[1]], input_ids)
+            and self.torch.equal(output_ids[:, : input_ids.shape[1]], input_ids)
         ):
-            generated = output_ids[:, input_ids.shape[1]:]
-        else:
-            generated = output_ids
-        return self.tokenizer.batch_decode(generated, skip_special_tokens=True)[0].strip()
-
-
-class LlavaOneVisionAdapter(LlavaAdapter):
-    default_conversation_mode = "qwen_1_5"
+            output_ids = output_ids[:, input_ids.shape[1] :]
+        return self.tokenizer.batch_decode(
+            output_ids, skip_special_tokens=True
+        )[0].strip()

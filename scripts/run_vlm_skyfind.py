@@ -3,6 +3,7 @@
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -11,6 +12,23 @@ DEFAULT_MODEL_CONFIG = PROJECT_ROOT / "configs" / "vlm_models.json"
 DEFAULT_DATA_ROOT = "/root/autodl-tmp/BioLoc/data/SkyFind_data"
 
 sys.path.insert(0, str(PROJECT_ROOT))
+
+
+def normalize_thread_environment():
+    """Prevent libgomp from rejecting malformed inherited thread counts."""
+    for name in ("OMP_NUM_THREADS", "MKL_NUM_THREADS"):
+        value = os.environ.get(name)
+        if value is None:
+            continue
+        try:
+            valid = int(value) > 0
+        except ValueError:
+            valid = False
+        if not valid:
+            os.environ[name] = "1"
+
+
+normalize_thread_environment()
 
 from vlm_skyfind.adapters import model_names
 from vlm_skyfind.runner import run
@@ -44,6 +62,7 @@ def parse_args():
     parser.add_argument("--attn-implementation", default="sdpa", choices=("eager", "sdpa", "flash_attention_2"))
     parser.add_argument("--internvl-max-tiles", default=12, type=int)
     parser.add_argument("--conversation-mode", default=None)
+    parser.add_argument("--llava-model-name", default="llava_qwen")
     args = parser.parse_args()
     if args.model_path is None:
         config_path = Path(args.model_config)

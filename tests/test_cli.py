@@ -1,4 +1,5 @@
 import importlib.util
+import os
 import sys
 import unittest
 from pathlib import Path
@@ -26,10 +27,20 @@ class CliTest(unittest.TestCase):
             args = CLI.parse_args()
         self.assertEqual(args.data_root, "/root/autodl-tmp/BioLoc/data/SkyFind_data")
         self.assertEqual(args.prompt_variant, "rsvg")
+        self.assertEqual(args.llava_model_name, "llava_qwen")
         self.assertEqual(
             args.model_path,
             "/root/autodl-tmp/VLMSkyFind/models/Qwen2.5-VL-7B-Instruct",
         )
+
+    def test_invalid_thread_environment_is_sanitized(self):
+        with patch.dict(
+            os.environ,
+            {"OMP_NUM_THREADS": "", "MKL_NUM_THREADS": "not-an-integer"},
+        ):
+            CLI.normalize_thread_environment()
+            self.assertEqual(os.environ["OMP_NUM_THREADS"], "1")
+            self.assertEqual(os.environ["MKL_NUM_THREADS"], "1")
 
 
 if __name__ == "__main__":

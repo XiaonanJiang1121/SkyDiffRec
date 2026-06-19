@@ -26,6 +26,7 @@ checkpoints/
 /models/
 /predictions/
 /visualizations/
+/third_party/
 
 # Temporary files
 tmp/
