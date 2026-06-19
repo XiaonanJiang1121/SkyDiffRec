@@ -48,7 +48,7 @@ class RunnerTest(unittest.TestCase):
                 dtype="float32",
                 max_new_tokens=16,
                 prompt_variant="rsvg",
-                coordinate_mode="pixel",
+                coordinate_mode="model_native",
                 source_prefixes=None,
                 limit=None,
                 start_index=0,
@@ -80,6 +80,9 @@ class RunnerTest(unittest.TestCase):
                         self.assertEqual(records[0]["status"], "image_error")
                         self.assertEqual(records[1]["status"], "ok")
                         self.assertEqual(records[1]["iou"], 1.0)
+                        self.assertEqual(
+                            records[1]["coordinate_mode_resolved"], "pixel"
+                        )
                         summary = json.loads(summary_path.read_text(encoding="utf-8"))
                         protocol = json.loads(
                             Path(str(output) + ".meta.json").read_text(
@@ -91,6 +94,8 @@ class RunnerTest(unittest.TestCase):
                         self.assertEqual(summary["record_count"], 2)
                         self.assertEqual(summary["skipped_image_count"], 1)
                         self.assertNotIn("llava_model_name", protocol)
+                        self.assertEqual(protocol["coordinate_mode"], "pixel")
+                        self.assertIn("prompt_template", protocol)
             self.assertEqual(adapter.calls, 2)
 
 

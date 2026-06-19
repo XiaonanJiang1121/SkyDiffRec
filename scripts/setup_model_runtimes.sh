@@ -3,12 +3,13 @@ set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 THIRD_PARTY_ROOT="${PROJECT_ROOT}/third_party"
+VENV_ROOT="${PROJECT_ROOT}/.venvs"
 PYTHON_BIN="${PYTHON_BIN:-python}"
 TARGET="${1:-all}"
 CONDA_BIN="${CONDA_EXE:-$(command -v conda || true)}"
 PACKAGE_INDEX_URL="${VLM_PYPI_INDEX_URL:-https://pypi.org/simple}"
 
-mkdir -p "${THIRD_PARTY_ROOT}"
+mkdir -p "${THIRD_PARTY_ROOT}" "${VENV_ROOT}"
 
 ensure_source() {
   local name="$1"
@@ -74,6 +75,21 @@ setup_deepseek() {
     https://github.com/deepseek-ai/DeepSeek-VL.git \
     681bffb4519856ad27cc17531aacde31ddf6f1a7
   install_active_runtime DeepSeek-VL
+}
+
+setup_internvl() {
+  local venv="${VENV_ROOT}/internvl"
+
+  if [[ ! -x "${venv}/bin/python" ]]; then
+    "${PYTHON_BIN}" -m venv --system-site-packages "${venv}"
+  fi
+  "${venv}/bin/python" -m pip install \
+    --index-url "${PACKAGE_INDEX_URL}" \
+    transformers==4.37.2 \
+    tokenizers==0.15.1 \
+    sentencepiece==0.1.99
+  "${venv}/bin/python" -c \
+    'import torch, transformers; assert transformers.__version__ == "4.37.2"; print(torch.__version__, transformers.__version__)'
 }
 
 setup_llava() {
@@ -149,16 +165,18 @@ setup_geochat() {
 case "${TARGET}" in
   all)
     setup_deepseek
+    setup_internvl
     setup_llava
     setup_geochat
     ;;
   deepseek) setup_deepseek ;;
+  internvl) setup_internvl ;;
   llava) setup_llava ;;
   geochat) setup_geochat ;;
   *)
-    echo "Usage: $0 [all|deepseek|llava|geochat]" >&2
+    echo "Usage: $0 [all|deepseek|internvl|llava|geochat]" >&2
     exit 2
     ;;
 esac
 
-echo "Installed ${TARGET} runtime; LLaVA/GeoChat use isolated Conda environments."
+echo "Installed ${TARGET} runtime; InternVL/LLaVA/GeoChat use isolated environments."

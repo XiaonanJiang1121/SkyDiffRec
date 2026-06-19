@@ -13,9 +13,10 @@ except ImportError:
 
 from .adapters import create_adapter
 from .boxes import box_iou, parse_prediction
+from .coordinates import resolve_coordinate_mode
 from .data import InvalidImageError, SkyFindDataset, source_name
 from .metrics import summarize, write_summary
-from .prompts import build_prompt
+from .prompts import build_prompt, prompt_template
 
 
 def completed_sample_ids(path):
@@ -39,14 +40,19 @@ def _append_record(handle, record):
     handle.flush()
 
 
-def _write_or_validate_protocol(args, output_path):
+def _write_or_validate_protocol(
+    args, output_path, resolved_coordinate_mode, coordinate_mode_basis
+):
     protocol_path = Path(str(output_path) + ".meta.json")
     protocol = {
         "model": args.model,
         "model_path": str(Path(args.model_path).resolve()),
         "split": args.split,
         "prompt_variant": args.prompt_variant,
-        "coordinate_mode": args.coordinate_mode,
+        "prompt_template": prompt_template(args.prompt_variant),
+        "coordinate_mode_requested": args.coordinate_mode,
+        "coordinate_mode": resolved_coordinate_mode,
+        "coordinate_mode_basis": coordinate_mode_basis,
         "dtype": args.dtype,
         "max_new_tokens": args.max_new_tokens,
         "attn_implementation": args.attn_implementation,
@@ -83,7 +89,15 @@ def run(args):
     )
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    _write_or_validate_protocol(args, output_path)
+    resolved_coordinate_mode, coordinate_mode_basis = resolve_coordinate_mode(
+        args.model, args.coordinate_mode
+    )
+    _write_or_validate_protocol(
+        args,
+        output_path,
+        resolved_coordinate_mode,
+        coordinate_mode_basis,
+    )
     done = completed_sample_ids(output_path) if args.resume else set()
     indices = list(range(len(dataset)))
     if args.start_index:
@@ -140,7 +154,7 @@ def run(args):
                     response,
                     sample["width"],
                     sample["height"],
-                    coordinate_mode=args.coordinate_mode,
+                    coordinate_mode=resolved_coordinate_mode,
                 )
                 status = "ok" if pred_box is not None else "parse_error"
                 iou = box_iou(pred_box, sample["gt_box"])
@@ -151,6 +165,9 @@ def run(args):
                     "prompt_variant": args.prompt_variant,
                     "prompt": prompt,
                     "raw_response": response,
+                    "coordinate_mode_requested": args.coordinate_mode,
+                    "coordinate_mode_resolved": resolved_coordinate_mode,
+                    "coordinate_mode_basis": coordinate_mode_basis,
                     "coordinate_mode": detected_mode,
                     "pred_box": pred_box,
                     "iou": iou,
@@ -164,6 +181,9 @@ def run(args):
                     "model_path": args.model_path,
                     "prompt_variant": args.prompt_variant,
                     "prompt": prompt,
+                    "coordinate_mode_requested": args.coordinate_mode,
+                    "coordinate_mode_resolved": resolved_coordinate_mode,
+                    "coordinate_mode_basis": coordinate_mode_basis,
                     "pred_box": None,
                     "iou": 0.0,
                     "latency_seconds": time.perf_counter() - start,

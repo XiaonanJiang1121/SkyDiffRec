@@ -27,6 +27,7 @@ checkpoints/
 /predictions/
 /visualizations/
 /third_party/
+/.venvs/
 
 # Temporary files
 tmp/

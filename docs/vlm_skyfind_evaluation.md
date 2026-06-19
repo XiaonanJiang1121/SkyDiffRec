@@ -11,18 +11,23 @@ before designing later coarse-to-fine methods:
 4. DeepSeek-VL-7B-Chat
 5. InternVL2.5-8B
 
-The primary protocol uses the same complete one-sentence RSVG prompt for every
-model:
+The primary protocol reproduces the exact text assembled by the released
+RSVG-ZeroOV `llmattn.py`. The two spaces after `description.` are intentional:
 
 ```text
-Locate the object referred to by '{referring expression}' and return its box coordinates (x1, y1, x2, y2).
+Locate it according to the following description.  {referring expression} The output format should be like [x1, y1, x2, y2] without any other text.
 ```
+
+The sentence often quoted in the paper description, `Locate the object referred
+to by ...`, is not the prompt executed by the released RSVG-ZeroOV code. The
+output-only sentence is essential for direct-box evaluation, especially for
+general chat models.
 
 The default is `--prompt-variant rsvg`. An optional `pixel` protocol remains
 available as another complete one-sentence prompt:
 
 ```text
-Locate the object referred to by '{referring expression}' and return its box coordinates (x1, y1, x2, y2) as a single list [x1, y1, x2, y2] in the original {width} x {height} SkyFind image pixel coordinate system.
+Locate the object referred to by '{referring expression}' and return only its box coordinates as [x1, y1, x2, y2] in the original {width} x {height} SkyFind image pixel coordinate system.
 ```
 
 Do not mix the two prompt variants in one result file.
@@ -38,8 +43,10 @@ model, and excluded from model-quality denominators. `skipped_image_count`
 reports their total. Each unique image is fully decoded once before inference;
 its original size or failure state is cached for repeated expressions.
 
-Each JSONL also has a `.meta.json` protocol file. Resume refuses to mix models,
-splits, prompts, or coordinate conventions in one output.
+Each JSONL also has a `.meta.json` protocol file. It stores the complete prompt
+template, requested and resolved coordinate modes, and the reason for the
+model-native choice. Resume refuses to mix models, splits, prompt text, or
+coordinate conventions in one output.
 The runner stops after five consecutive inference exceptions by default, which
 prevents an adapter/environment mismatch from wasting an entire split.
 
@@ -75,12 +82,20 @@ needed:
 
 ```bash
 bash scripts/setup_model_runtimes.sh deepseek
+bash scripts/setup_model_runtimes.sh internvl
 bash scripts/setup_model_runtimes.sh llava
 bash scripts/setup_model_runtimes.sh geochat
 ```
 
-DeepSeek is installed in the active environment. LLaVA-OneVision and GeoChat
-must not share that environment: their official code imports Transformers APIs
+DeepSeek is installed in the active environment. InternVL uses
+`.venvs/internvl`, which reuses the active environment's PyTorch/CUDA packages
+but installs the official `transformers==4.37.2` and `tokenizers==0.15.1`
+separately. Run it with `.venvs/internvl/bin/python`. This resolves the missing
+`InternLM2ForCausalLM.generate` method without modifying model code or changing
+the working Qwen environment.
+
+LLaVA-OneVision and GeoChat must not share that environment: their official
+code imports Transformers APIs
 from different generations. The setup script creates `vlm-llava` with the exact
 Transformers commit pinned by LLaVA-NeXT (4.40.0.dev0) and `vlm-geochat` with
 the official `transformers==4.31.0`. Their official PyTorch versions are also
@@ -147,9 +162,26 @@ model class.
 from `configs/vlm_models.json`. `--data-root` also defaults to the BioLoc path
 shown above. Both options can still be overridden explicitly.
 
-Do not silently switch coordinate conventions after seeing ground truth. If a
-model consistently follows a documented normalized convention, run it with the
-corresponding explicit `--coordinate-mode` and record that protocol change.
+`--coordinate-mode model_native` is the default. It resolves as follows:
+
+| Model | Resolved mode | Basis |
+| --- | --- | --- |
+| Qwen2.5-VL-7B | `pixel` | Saved SkyFind responses include coordinates above 1000 for 1920-wide images; RSVG applies no box restoration function |
+| InternVL2.5-8B | `normalized_1000` | Official RefCOCO evaluator divides by 1000, then multiplies x by original width and y by original height |
+| DeepSeek-VL-7B | `auto` | Official DeepSeek-VL release defines no grounding-coordinate contract |
+| LLaVA/GeoChat | `auto` | Deferred until their runtimes are validated |
+
+For a normalized InternVL prediction, conversion is performed before IoU:
+
+```text
+x_pixel = x_normalized * image_width / 1000
+y_pixel = y_normalized * image_height / 1000
+```
+
+DeepSeek `auto` accepts `[0,1]` coordinates and responses that explicitly state
+their scale. A four-number list that could mean either pixels or `[0,1000]` is
+marked `ambiguous` and receives no fabricated box. Do not silently switch a
+coordinate convention after seeing ground truth.
 
 No shared resize is applied by the dataset or runner. Each adapter receives the
 original SkyFind image file and original width/height. Qwen, InternVL,
@@ -159,10 +191,11 @@ SkyFind coordinate system.
 
 ## 5. Full Val/Test Runs
 
-Replace the model name and path using `configs/vlm_models.json`:
+Model paths are resolved through `configs/vlm_models.json`. Run InternVL through
+its isolated runtime:
 
 ```bash
-CUDA_VISIBLE_DEVICES=0 python scripts/run_vlm_skyfind.py \
+.venvs/internvl/bin/python scripts/run_vlm_skyfind.py \
   --model internvl2.5-8b \
   --data-root "$DATA_ROOT" \
   --split val \
@@ -182,11 +215,11 @@ process before starting the next model so its GPU memory is returned.
 
 ## 7. Recommended Experimental Order
 
-1. Run 20-sample smoke tests for all five adapters and inspect raw responses.
-2. Run a fixed 300-sample Val pilot for all models to estimate speed and format
+1. Run 20-sample smoke tests for Qwen, DeepSeek, and InternVL and inspect raw responses.
+2. Run a fixed 300-sample Val pilot for these models to estimate speed and format
    compliance.
-3. Complete full Val for all five models.
-4. Complete Test only after each model's protocol is frozen.
+3. Complete full Val, then Test only after each model's protocol is frozen.
+4. Return to LLaVA-OneVision and GeoChat as a separate runtime task.
 5. Compare direct box prediction with a later candidate-reranking experiment;
    direct VLM localization alone does not isolate semantic reasoning from
    small-object spatial precision.

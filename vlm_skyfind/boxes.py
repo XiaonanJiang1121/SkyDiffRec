@@ -5,7 +5,7 @@ import math
 import re
 
 
-_NUMBER = r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)"
+_NUMBER = r"(?<![A-Za-z0-9_])[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?![A-Za-z0-9_])"
 _FOUR_NUMBER_GROUP = re.compile(
     rf"[\[\(\{{]\s*({_NUMBER})\s*[,;]\s*({_NUMBER})\s*[,;]\s*"
     rf"({_NUMBER})\s*[,;]\s*({_NUMBER})\s*[\]\)\}}]"
@@ -66,12 +66,14 @@ def convert_coordinates(values, width, height, mode="pixel", raw_text=""):
             detected_mode = "normalized_1"
         elif "normalized" in lowered and "1000" in lowered:
             detected_mode = "normalized_1000"
-        elif values[0] <= width and values[2] <= width and values[1] <= height and values[3] <= height:
+        elif "pixel" in lowered:
             detected_mode = "pixel"
-        elif min(values) >= 0 and max(values) <= 1000:
-            detected_mode = "normalized_1000"
+        elif max(values) > 1000:
+            detected_mode = "pixel"
         else:
-            detected_mode = "pixel"
+            # Values such as [200, 300, 400, 500] could be either pixels or
+            # normalized-to-1000 coordinates. Do not manufacture a metric.
+            return None, "ambiguous"
 
     x1, y1, x2, y2 = values
     if detected_mode == "normalized_1":

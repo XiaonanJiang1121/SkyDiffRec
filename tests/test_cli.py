@@ -27,6 +27,7 @@ class CliTest(unittest.TestCase):
             args = CLI.parse_args()
         self.assertEqual(args.data_root, "/root/autodl-tmp/BioLoc/data/SkyFind_data")
         self.assertEqual(args.prompt_variant, "rsvg")
+        self.assertEqual(args.coordinate_mode, "model_native")
         self.assertEqual(args.llava_model_name, "llava_qwen")
         self.assertEqual(
             args.model_path,

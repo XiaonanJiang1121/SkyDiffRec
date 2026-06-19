@@ -50,8 +50,14 @@ def parse_args():
     parser.add_argument("--prompt-variant", default="rsvg", choices=("rsvg", "pixel"))
     parser.add_argument(
         "--coordinate-mode",
-        default="pixel",
-        choices=("pixel", "auto", "normalized_1", "normalized_1000"),
+        default="model_native",
+        choices=(
+            "model_native",
+            "pixel",
+            "auto",
+            "normalized_1",
+            "normalized_1000",
+        ),
     )
     parser.add_argument("--source-prefixes", nargs="*", default=None)
     parser.add_argument("--limit", type=int, default=None)

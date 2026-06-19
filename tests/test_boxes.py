@@ -18,6 +18,30 @@ class BoxParsingTest(unittest.TestCase):
         self.assertEqual(box, [20.0, 25.0, 100.0, 75.0])
         self.assertEqual(mode, "normalized_1")
 
+    def test_normalized_1000_box_uses_original_dimensions(self):
+        box, mode = parse_prediction(
+            "[100, 250, 500, 750]", 1920, 1080, "normalized_1000"
+        )
+        self.assertEqual(box, [192.0, 270.0, 960.0, 810.0])
+        self.assertEqual(mode, "normalized_1000")
+
+    def test_coordinate_labels_are_not_false_predictions(self):
+        box, mode = parse_prediction(
+            "I cannot provide coordinates (x1, y1, x2, y2).", 100, 80, "pixel"
+        )
+        self.assertIsNone(box)
+        self.assertIsNone(mode)
+
+    def test_auto_rejects_ambiguous_coordinate_scale(self):
+        box, mode = parse_prediction("[100, 200, 300, 400]", 1920, 1080, "auto")
+        self.assertIsNone(box)
+        self.assertEqual(mode, "ambiguous")
+
+    def test_auto_accepts_unambiguous_normalized_one(self):
+        box, mode = parse_prediction("[0.25, 0.5, 0.75, 1.0]", 200, 100, "auto")
+        self.assertEqual(box, [50.0, 50.0, 150.0, 100.0])
+        self.assertEqual(mode, "normalized_1")
+
     def test_reorders_and_clamps(self):
         box, _ = parse_prediction("[120, 70, -10, 10]", 100, 80, "pixel")
         self.assertEqual(box, [0.0, 10.0, 100.0, 70.0])
