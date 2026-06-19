@@ -5,7 +5,8 @@ export OMP_NUM_THREADS=1
 export MKL_NUM_THREADS=1
 
 # 首次运行 DeepSeek/LLaVA/GeoChat 前，分别安装其官方源码运行时。
-# 脚本使用 --no-deps 安装源码包，不会降级当前 torch/transformers。
+# 脚本使用 --no-build-isolation --no-deps 安装源码包，不会从镜像另建
+# build environment，也不会降级当前 torch/transformers。
 bash scripts/setup_model_runtimes.sh deepseek
 bash scripts/setup_model_runtimes.sh llava
 bash scripts/setup_model_runtimes.sh geochat

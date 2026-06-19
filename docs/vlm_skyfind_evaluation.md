@@ -79,11 +79,22 @@ bash scripts/setup_model_runtimes.sh llava
 bash scripts/setup_model_runtimes.sh geochat
 ```
 
-The setup script installs each source tree with `--no-deps`, so it does not
-downgrade the CUDA-matched PyTorch or the shared Transformers installation.
-It installs only the small missing direct dependencies separately. The runner
-also replaces malformed inherited `OMP_NUM_THREADS`/`MKL_NUM_THREADS` values
-with `1` before importing PyTorch.
+The setup script installs each source tree with `--no-deps` and
+`--no-build-isolation`, so it does not downgrade the CUDA-matched PyTorch or ask
+the configured package mirror to create a second build environment. It reuses
+the active Conda environment's setuptools and installs only the small missing
+direct dependencies separately. The runner also replaces malformed inherited
+`OMP_NUM_THREADS`/`MKL_NUM_THREADS` values with `1` before importing PyTorch.
+
+If pip reports that it cannot download `setuptools>=61.0` while installing an
+editable official runtime, first pull the latest branch and rerun the setup
+command. The cloned source directory is reused. Verify the active environment
+only if the retry still fails:
+
+```bash
+python -c "import setuptools; print(setuptools.__version__)"
+python -m pip install --no-build-isolation --no-deps -e third_party/GeoChat
+```
 
 These upstream projects can require different Transformers versions. If one
 combined environment cannot load all five models, use one environment per model

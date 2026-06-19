@@ -19,7 +19,12 @@ install_source_runtime() {
   fi
   git -C "${destination}" fetch origin "${revision}"
   git -C "${destination}" checkout --detach "${revision}"
-  "${PYTHON_BIN}" -m pip install --no-deps -e "${destination}"
+  # Reuse the active Conda environment's setuptools instead of downloading a
+  # temporary build toolchain from a possibly incomplete mirror.
+  "${PYTHON_BIN}" -m pip install \
+    --no-build-isolation \
+    --no-deps \
+    -e "${destination}"
 }
 
 setup_deepseek() {
