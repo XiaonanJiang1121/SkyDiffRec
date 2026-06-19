@@ -12,16 +12,10 @@ class Qwen25VLAdapter(BaseVLMAdapter):
 
         self.torch = torch
         self.process_vision_info = process_vision_info
-        processor_options = {}
-        if self.options.get("qwen_min_pixels") is not None:
-            processor_options["min_pixels"] = self.options["qwen_min_pixels"]
-        if self.options.get("qwen_max_pixels") is not None:
-            processor_options["max_pixels"] = self.options["qwen_max_pixels"]
         self.processor = AutoProcessor.from_pretrained(
             self.model_path,
             trust_remote_code=True,
             use_fast=True,
-            **processor_options,
         )
         self.model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
             self.model_path,

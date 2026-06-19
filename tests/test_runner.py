@@ -20,7 +20,7 @@ class FakeAdapter:
 
 
 class RunnerTest(unittest.TestCase):
-    def test_run_and_resume(self):
+    def test_val_and_test_skip_bad_images_and_resume(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / "images").mkdir()
@@ -39,19 +39,15 @@ class RunnerTest(unittest.TestCase):
             samples = [bad_sample, valid_sample]
             (root / "Val.json").write_text(json.dumps(samples), encoding="utf-8")
             (root / "Test.json").write_text(json.dumps(samples), encoding="utf-8")
-            output = root / "predictions.jsonl"
-            args = Namespace(
+            common_args = dict(
                 model="qwen2.5-vl-7b",
                 model_path=str(root / "model"),
                 data_root=str(root),
                 image_dir=None,
-                split="val",
-                output=str(output),
-                summary_output=str(root / "summary.json"),
                 device="cpu",
                 dtype="float32",
                 max_new_tokens=16,
-                prompt_variant="pixel",
+                prompt_variant="rsvg",
                 coordinate_mode="pixel",
                 source_prefixes=None,
                 limit=None,
@@ -61,27 +57,35 @@ class RunnerTest(unittest.TestCase):
                 max_consecutive_errors=5,
                 attn_implementation="eager",
                 internvl_max_tiles=1,
-                qwen_min_pixels=None,
-                qwen_max_pixels=None,
                 conversation_mode=None,
             )
             adapter = FakeAdapter()
             with patch("vlm_skyfind.runner.create_adapter", return_value=adapter):
-                run(args)
-                run(args)
+                for split in ("val", "test"):
+                    with self.subTest(split=split):
+                        output = root / f"{split}_predictions.jsonl"
+                        summary_path = root / f"{split}_summary.json"
+                        args = Namespace(
+                            **common_args,
+                            split=split,
+                            output=str(output),
+                            summary_output=str(summary_path),
+                        )
+                        run(args)
+                        run(args)
 
-            lines = output.read_text(encoding="utf-8").strip().splitlines()
-            self.assertEqual(len(lines), 2)
-            records = [json.loads(line) for line in lines]
-            self.assertEqual(records[0]["status"], "image_error")
-            self.assertEqual(records[1]["status"], "ok")
-            self.assertEqual(records[1]["iou"], 1.0)
-            self.assertEqual(adapter.calls, 1)
-            summary = json.loads((root / "summary.json").read_text(encoding="utf-8"))
-            self.assertEqual(summary["miou"], 1.0)
-            self.assertEqual(summary["count"], 1)
-            self.assertEqual(summary["record_count"], 2)
-            self.assertEqual(summary["skipped_image_count"], 1)
+                        lines = output.read_text(encoding="utf-8").strip().splitlines()
+                        self.assertEqual(len(lines), 2)
+                        records = [json.loads(line) for line in lines]
+                        self.assertEqual(records[0]["status"], "image_error")
+                        self.assertEqual(records[1]["status"], "ok")
+                        self.assertEqual(records[1]["iou"], 1.0)
+                        summary = json.loads(summary_path.read_text(encoding="utf-8"))
+                        self.assertEqual(summary["miou"], 1.0)
+                        self.assertEqual(summary["count"], 1)
+                        self.assertEqual(summary["record_count"], 2)
+                        self.assertEqual(summary["skipped_image_count"], 1)
+            self.assertEqual(adapter.calls, 2)
 
 
 if __name__ == "__main__":

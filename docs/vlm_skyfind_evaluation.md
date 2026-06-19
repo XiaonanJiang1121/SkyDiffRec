@@ -11,26 +11,32 @@ before designing later coarse-to-fine methods:
 4. DeepSeek-VL-7B-Chat
 5. InternVL2.5-8B
 
-The primary protocol uses one prompt for every model. Its first sentence is the
-RSVG-ZeroOV localization prompt:
+The primary protocol uses the same complete one-sentence RSVG prompt for every
+model:
 
 ```text
 Locate the object referred to by '{referring expression}' and return its box coordinates (x1, y1, x2, y2).
 ```
 
-The default `pixel` variant appends the original image dimensions and asks for
-one bracketed box in original-image pixels. This removes an otherwise serious
-ambiguity between pixel, `[0, 1]`, and `[0, 1000]` coordinates. The exact prompt
-without the suffix remains available as `--prompt-variant rsvg`.
+The default is `--prompt-variant rsvg`. An optional `pixel` protocol remains
+available as another complete one-sentence prompt:
+
+```text
+Locate the object referred to by '{referring expression}' and return its box coordinates (x1, y1, x2, y2) as a single list [x1, y1, x2, y2] in the original {width} x {height} SkyFind image pixel coordinate system.
+```
+
+Do not mix the two prompt variants in one result file.
 
 ## 2. What Is Recorded
 
 Every sample is appended immediately to JSONL, so an interrupted multi-hour run
 can resume safely. A record contains the expression, image metadata, ground
 truth, full prompt, raw model response, parsed prediction, IoU, latency, and
-failure status. Failed parses receive IoU 0. Corrupt or missing source images are
-reported as `image_error`, skipped without calling the model, and excluded from
-model-quality denominators. `skipped_image_count` reports their total.
+failure status. Failed parses receive IoU 0. For both Val and Test, corrupt or
+missing source images are reported as `image_error`, skipped without calling the
+model, and excluded from model-quality denominators. `skipped_image_count`
+reports their total. Each unique image is fully decoded once before inference;
+its original size or failure state is cached for repeated expressions.
 
 Each JSONL also has a `.meta.json` protocol file. Resume refuses to mix models,
 splits, prompts, or coordinate conventions in one output.
@@ -70,18 +76,17 @@ family. The JSONL format and evaluator are environment-independent.
 
 ## 4. Smoke Test First
 
-Set the server paths. `DATA_ROOT` must contain `Val.json`, `Test.json`, and
-`images/`.
+The repository, `models/`, and `configs/` are siblings under `PROJECT`. The
+SkyFind annotations and images remain under the BioLoc data directory:
 
 ```bash
 export PROJECT=/root/autodl-tmp/VLMSkyFind
-export DATA_ROOT=/root/autodl-tmp/VLMSkyFind/data/SkyFind_data
+export DATA_ROOT=/root/autodl-tmp/BioLoc/data/SkyFind_data
 cd "$PROJECT"
 export PYTHONPATH="$PWD:${PYTHONPATH:-}"
 
 CUDA_VISIBLE_DEVICES=0 python scripts/run_vlm_skyfind.py \
   --model qwen2.5-vl-7b \
-  --model-path models/Qwen2.5-VL-7B-Instruct \
   --data-root "$DATA_ROOT" \
   --split val \
   --limit 20 \
@@ -95,15 +100,19 @@ Inspect raw answers and parse failures before launching a full split:
 sed -n '1,5p' predictions/qwen2.5-vl-7b_val_smoke.jsonl
 ```
 
+`--model-path` is optional: by default the runner resolves the selected model
+from `configs/vlm_models.json`. `--data-root` also defaults to the BioLoc path
+shown above. Both options can still be overridden explicitly.
+
 Do not silently switch coordinate conventions after seeing ground truth. If a
 model consistently follows a documented normalized convention, run it with the
 corresponding explicit `--coordinate-mode` and record that protocol change.
 
-SkyFind Test contains many high-resolution maritime images. Qwen's native
-dynamic-resolution processor is left unchanged by default. If a 24 GB GPU runs
-out of memory, set an explicit limit such as `--qwen-max-pixels 1003520`, repeat
-the pilot, and keep that setting fixed for both Val and Test. InternVL similarly
-records `--internvl-max-tiles` (default 12) in the protocol metadata.
+No shared resize is applied by the dataset or runner. Each adapter receives the
+original SkyFind image file and original width/height. Qwen, InternVL,
+LLaVA/GeoChat, and DeepSeek then perform only their required model-native image
+preprocessing. Predictions are parsed, clamped, and evaluated in the original
+SkyFind coordinate system.
 
 ## 5. Full Val/Test Runs
 
@@ -112,7 +121,6 @@ Replace the model name and path using `configs/vlm_models.json`:
 ```bash
 CUDA_VISIBLE_DEVICES=0 python scripts/run_vlm_skyfind.py \
   --model internvl2.5-8b \
-  --model-path models/InternVL2_5-8B \
   --data-root "$DATA_ROOT" \
   --split val \
   --output predictions/internvl2.5-8b_val.jsonl \

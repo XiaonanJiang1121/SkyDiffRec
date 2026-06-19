@@ -51,9 +51,9 @@ def _write_or_validate_protocol(args, output_path):
         "max_new_tokens": args.max_new_tokens,
         "attn_implementation": args.attn_implementation,
         "internvl_max_tiles": args.internvl_max_tiles,
-        "qwen_min_pixels": args.qwen_min_pixels,
-        "qwen_max_pixels": args.qwen_max_pixels,
         "conversation_mode": args.conversation_mode,
+        "data_root": str(Path(args.data_root).resolve()),
+        "image_dir": str(Path(args.image_dir).resolve()) if args.image_dir else None,
         "source_prefixes": args.source_prefixes,
     }
     if args.resume and protocol_path.exists():
@@ -95,8 +95,6 @@ def run(args):
         max_new_tokens=args.max_new_tokens,
         attn_implementation=args.attn_implementation,
         max_tiles=args.internvl_max_tiles,
-        qwen_min_pixels=args.qwen_min_pixels,
-        qwen_max_pixels=args.qwen_max_pixels,
         conversation_mode=args.conversation_mode,
     )
 

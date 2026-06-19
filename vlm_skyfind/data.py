@@ -38,6 +38,7 @@ class SkyFindDataset:
             if not allowed or source_name(sample["fileName"]) in allowed
         ]
         self.split = split
+        self._image_info = {}
 
     def __len__(self):
         return len(self.samples)
@@ -45,15 +46,18 @@ class SkyFindDataset:
     def __getitem__(self, item):
         annotation_index, sample = self.samples[item]
         image_path = self.image_dir / sample["fileName"]
-        try:
-            with Image.open(image_path) as image:
-                image.verify()
-            with Image.open(image_path) as image:
-                width, height = image.size
-        except Exception as exc:
-            raise InvalidImageError(
-                f"Cannot decode image {image_path}: {type(exc).__name__}: {exc}"
-            ) from exc
+        cache_key = str(image_path)
+        if cache_key not in self._image_info:
+            try:
+                with Image.open(image_path) as image:
+                    image.load()
+                    self._image_info[cache_key] = (*image.size, None)
+            except Exception as exc:
+                message = f"Cannot decode image {image_path}: {type(exc).__name__}: {exc}"
+                self._image_info[cache_key] = (None, None, message)
+        width, height, image_error = self._image_info[cache_key]
+        if image_error is not None:
+            raise InvalidImageError(image_error)
 
         expression = sample.get("expression", "")
         if not isinstance(expression, str) or not expression.strip():
