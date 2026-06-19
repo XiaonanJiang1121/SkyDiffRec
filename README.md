@@ -19,3 +19,5 @@ the split.
 See [`docs/vlm_skyfind_evaluation.md`](docs/vlm_skyfind_evaluation.md) for the
 evaluation protocol and server commands. The initial output audit is recorded in
 [`docs/smoke_result_audit_2026-06-19.md`](docs/smoke_result_audit_2026-06-19.md).
+The strict-prompt result and Table 4 metric review is in
+[`docs/smoke_result_review_2026-06-20.md`](docs/smoke_result_review_2026-06-20.md).

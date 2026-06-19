@@ -5,6 +5,9 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 
+SKYFIND_IOU_THRESHOLDS = (0.5, 0.6, 0.7, 0.8, 0.9)
+
+
 def expression_bucket(expression):
     length = len(expression.split())
     if length <= 20:
@@ -31,14 +34,74 @@ def _score(records):
     ious = [float(record.get("iou", 0.0)) for record in evaluable]
     parsed_ious = [float(record.get("iou", 0.0)) for record in parsed]
     count = len(evaluable)
+    threshold_accuracy = {
+        f"{threshold:.1f}": (
+            sum(iou >= threshold for iou in ious) / count if count else 0.0
+        )
+        for threshold in SKYFIND_IOU_THRESHOLDS
+    }
+    iou_at_mean = sum(threshold_accuracy.values()) / len(SKYFIND_IOU_THRESHOLDS)
     return {
         "count": count,
         "parsed_count": len(parsed),
         "parse_rate": len(parsed) / count if count else 0.0,
+        "iou_at_0.5": threshold_accuracy["0.5"],
+        "iou_at_mean": iou_at_mean,
+        "iou_at_0.5_percent": threshold_accuracy["0.5"] * 100.0,
+        "iou_at_mean_percent": iou_at_mean * 100.0,
+        "iou_threshold_accuracy": threshold_accuracy,
+        # Retain raw mean IoU as a localization diagnostic. It is not the
+        # IoU@mean metric reported in SkyFind Table 4.
         "miou": sum(ious) / count if count else 0.0,
         "parsed_miou": sum(parsed_ious) / len(parsed) if parsed else 0.0,
-        "acc_0.5": sum(iou >= 0.5 for iou in ious) / count if count else 0.0,
+        "acc_0.5": threshold_accuracy["0.5"],
         "acc_0.7": sum(iou >= 0.7 for iou in ious) / count if count else 0.0,
+    }
+
+
+def summarize_table4(model, val_records, test_records):
+    """Build the six-column SkyFind Table 4 result for one model."""
+    val_records = list(val_records)
+    test_records = list(test_records)
+    for split, records in (("val", val_records), ("test", test_records)):
+        if not records:
+            raise ValueError(f"No {split} records supplied for Table 4")
+        for record in records:
+            if record.get("split") != split:
+                raise ValueError(
+                    f"Expected {split} record, got {record.get('split')!r} "
+                    f"for {record.get('sample_id', 'unknown sample')}"
+                )
+            if record.get("model") != model:
+                raise ValueError(
+                    f"Expected model {model!r}, got {record.get('model')!r} "
+                    f"for {record.get('sample_id', 'unknown sample')}"
+                )
+
+    val = _score(val_records)
+    test = _score(test_records)
+
+    def columns(score):
+        return {
+            "iou_at_0.5": score["iou_at_0.5"],
+            "iou_at_mean": score["iou_at_mean"],
+            "iou_at_0.5_percent": score["iou_at_0.5_percent"],
+            "iou_at_mean_percent": score["iou_at_mean_percent"],
+            "count": score["count"],
+        }
+
+    average_iou_05 = (val["iou_at_0.5"] + test["iou_at_0.5"]) / 2.0
+    average_iou_mean = (val["iou_at_mean"] + test["iou_at_mean"]) / 2.0
+    return {
+        "model": model,
+        "val": columns(val),
+        "test": columns(test),
+        "average": {
+            "iou_at_0.5": average_iou_05,
+            "iou_at_mean": average_iou_mean,
+            "iou_at_0.5_percent": average_iou_05 * 100.0,
+            "iou_at_mean_percent": average_iou_mean * 100.0,
+        },
     }
 
 

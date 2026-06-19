@@ -50,10 +50,21 @@ coordinate conventions in one output.
 The runner stops after five consecutive inference exceptions by default, which
 prevents an adapter/environment mismatch from wasting an entire split.
 
-The summary reports:
+The primary summary metrics match SkyFind Table 4:
 
-- mIoU, Acc@0.5, and Acc@0.7 over all evaluable samples
-- response parse rate and parsed-only mIoU
+- `iou_at_0.5`: fraction of samples whose box IoU is at least 0.5
+- `iou_at_mean`: equal-weight mean of IoU-threshold accuracies at 0.5, 0.6,
+  0.7, 0.8, and 0.9
+- percentage versions of both values for direct comparison with the paper
+
+The paper describes `IoU@mean` as an average over the five thresholds and does
+not publish unequal weights, so this implementation assigns each threshold
+weight 1/5. `miou` remains in the JSON only as the conventional raw mean of
+per-sample IoUs; it must not be reported as SkyFind `IoU@mean`.
+
+The summary also reports:
+
+- response parse rate and parsed-only raw mIoU
 - metrics by source dataset
 - metrics by expression length: `<=20`, `21-40`, and `>40` words
 - metrics by target area ratio: `<0.001`, `0.001-0.01`, and `>=0.01`
@@ -205,6 +216,18 @@ its isolated runtime:
 
 The same command with `--split test` evaluates Test. Resume is enabled by
 default. Use `--no-resume` only when intentionally replacing an output file.
+
+After both splits finish, create the six-column Table 4 row. `Average` is the
+simple arithmetic mean of the Val and Test metrics, matching the paper; it is
+not pooled by the unequal split sizes.
+
+```bash
+python scripts/summarize_table4.py \
+  --model qwen2.5-vl-7b \
+  --val predictions/qwen2.5-vl-7b_val.jsonl \
+  --test predictions/qwen2.5-vl-7b_test.jsonl \
+  --output predictions/qwen2.5-vl-7b_table4.json
+```
 
 ## 6. Single-GPU Execution
 

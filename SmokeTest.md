@@ -54,6 +54,28 @@ python scripts/run_vlm_skyfind.py \
   --output predictions/deepseek-vl-7b_val_rsvg_v2_smoke.jsonl \
   --summary-output predictions/deepseek-vl-7b_val_rsvg_v2_smoke_summary.json
 
+python -m json.tool predictions/deepseek-vl-7b_val_rsvg_v2_smoke_summary.json
+
+# 可选诊断：测试 DeepSeek 是否因两位小数的 [0,1] 输出而损失小目标精度。
+# 该结果属于 prompt ablation，不能替代上面的严格 RSVG baseline。
+python scripts/run_vlm_skyfind.py \
+  --model deepseek-vl-7b \
+  --data-root /root/autodl-tmp/BioLoc/data/SkyFind_data \
+  --split val \
+  --prompt-variant pixel \
+  --coordinate-mode pixel \
+  --no-resume \
+  --limit 20 \
+  --output predictions/deepseek-vl-7b_val_pixel_ablation_smoke.jsonl \
+  --summary-output predictions/deepseek-vl-7b_val_pixel_ablation_smoke_summary.json
+
+# Val/Test 全量完成后，生成与 SkyFind Table 4 一致的六列结果：
+python scripts/summarize_table4.py \
+  --model deepseek-vl-7b \
+  --val predictions/deepseek-vl-7b_val.jsonl \
+  --test predictions/deepseek-vl-7b_test.jsonl \
+  --output predictions/deepseek-vl-7b_table4.json
+
     #报错
     libgomp: Invalid value for environment variable OMP_NUM_THREADS
     Traceback (most recent call last):
