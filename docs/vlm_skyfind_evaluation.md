@@ -105,6 +105,13 @@ separately. Run it with `.venvs/internvl/bin/python`. This resolves the missing
 `InternLM2ForCausalLM.generate` method without modifying model code or changing
 the working Qwen environment.
 
+Because this lightweight venv inherits only the active environment's
+PyTorch/CUDA stack, it is intentionally absent from `conda env list`. Older
+setup output could also show pip resolver warnings about GeoChat or DeepSeek
+packages visible in the parent environment. Those warnings were not an
+InternVL installation failure; the setup is successful when its final version
+check prints the `.venvs/internvl/bin/python` path and Transformers 4.37.2.
+
 LLaVA-OneVision and GeoChat must not share that environment: their official
 code imports Transformers APIs
 from different generations. The setup script creates `vlm-llava` with the exact
