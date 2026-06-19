@@ -5,8 +5,8 @@ export OMP_NUM_THREADS=1
 export MKL_NUM_THREADS=1
 
 # 首次运行 DeepSeek/LLaVA/GeoChat 前，分别安装其官方源码运行时。
-# 脚本使用 --no-build-isolation --no-deps 安装源码包，不会从镜像另建
-# build environment，也不会降级当前 torch/transformers。
+# DeepSeek 使用当前 model 环境；LLaVA 和 GeoChat 分别使用 vlm-llava 与
+# vlm-geochat，现有 model 环境中的 Qwen/InternVL/DeepSeek 不会被修改。
 bash scripts/setup_model_runtimes.sh deepseek
 bash scripts/setup_model_runtimes.sh llava
 bash scripts/setup_model_runtimes.sh geochat
@@ -81,7 +81,7 @@ python scripts/run_vlm_skyfind.py \
 
 
 # llava-onevision-7b
-python scripts/run_vlm_skyfind.py \
+conda run --no-capture-output -n vlm-llava python scripts/run_vlm_skyfind.py \
   --model llava-onevision-7b \
   --data-root /root/autodl-tmp/BioLoc/data/SkyFind_data \
   --split val \
@@ -112,7 +112,7 @@ python scripts/run_vlm_skyfind.py \
     # 视觉塔 dtype 不一致或强制依赖 flash-attn。
 
 # geochat-7b
-python scripts/run_vlm_skyfind.py \
+conda run --no-capture-output -n vlm-geochat python scripts/run_vlm_skyfind.py \
   --model geochat-7b \
   --data-root /root/autodl-tmp/BioLoc/data/SkyFind_data \
   --split val \
@@ -148,3 +148,6 @@ python scripts/run_vlm_skyfind.py \
 - Qwen 返回的是原图 pixel 坐标；越界坐标按评测协议裁剪到图像边界，行为正常。
 - InternVL 命令下没有记录报错，也没有对应 predictions，当前不能视为已通过，需要在服务器重跑。
 - 上述 DeepSeek/LLaVA/GeoChat traceback 是修复前记录，保留用于追踪问题来源。
+- LLaVA 的 `apply_chunking_to_forward` 与 GeoChat 的 BLOOM `_expand_mask`
+  报错说明它们不能共享当前新版 Transformers；两个模型现改用各自的官方
+  依赖环境，不修改上游代码，也不降级现有 `model` 环境。
