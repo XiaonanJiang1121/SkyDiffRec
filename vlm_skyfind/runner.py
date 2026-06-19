@@ -13,7 +13,7 @@ except ImportError:
 
 from .adapters import create_adapter
 from .boxes import box_iou, parse_prediction
-from .data import SkyFindDataset
+from .data import InvalidImageError, SkyFindDataset, source_name
 from .metrics import summarize, write_summary
 from .prompts import build_prompt
 
@@ -54,8 +54,6 @@ def _write_or_validate_protocol(args, output_path):
         "qwen_min_pixels": args.qwen_min_pixels,
         "qwen_max_pixels": args.qwen_max_pixels,
         "conversation_mode": args.conversation_mode,
-        "num_shards": args.num_shards,
-        "shard_id": args.shard_id,
         "source_prefixes": args.source_prefixes,
     }
     if args.resume and protocol_path.exists():
@@ -83,10 +81,7 @@ def run(args):
     output_path.parent.mkdir(parents=True, exist_ok=True)
     _write_or_validate_protocol(args, output_path)
     done = completed_sample_ids(output_path) if args.resume else set()
-    indices = [
-        index for index in range(len(dataset))
-        if index % args.num_shards == args.shard_id
-    ]
+    indices = list(range(len(dataset)))
     if args.start_index:
         indices = [index for index in indices if index >= args.start_index]
     if args.limit is not None:
@@ -115,11 +110,15 @@ def run(args):
                 continue
             try:
                 sample = dataset[index]
-            except Exception as exc:
+            except InvalidImageError as exc:
+                annotation_index, raw_sample = dataset.samples[index]
                 record = {
                     "sample_id": fallback_id,
+                    "annotation_index": annotation_index,
                     "split": args.split,
                     "model": args.model,
+                    "file_name": raw_sample.get("fileName"),
+                    "source": source_name(raw_sample.get("fileName", "")),
                     "status": "image_error",
                     "error": f"{type(exc).__name__}: {exc}",
                 }

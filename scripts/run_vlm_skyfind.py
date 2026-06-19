@@ -32,8 +32,6 @@ def parse_args():
     parser.add_argument("--source-prefixes", nargs="*", default=None)
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--start-index", type=int, default=0)
-    parser.add_argument("--num-shards", type=int, default=1)
-    parser.add_argument("--shard-id", type=int, default=0)
     parser.add_argument("--resume", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--save-tracebacks", action="store_true")
     parser.add_argument("--max-consecutive-errors", default=5, type=int)
@@ -43,8 +41,6 @@ def parse_args():
     parser.add_argument("--qwen-max-pixels", default=None, type=int)
     parser.add_argument("--conversation-mode", default=None)
     args = parser.parse_args()
-    if args.num_shards <= 0 or not 0 <= args.shard_id < args.num_shards:
-        parser.error("Require num_shards > 0 and 0 <= shard_id < num_shards")
     if args.max_consecutive_errors <= 0:
         parser.error("max_consecutive_errors must be positive")
     if args.qwen_min_pixels is not None and args.qwen_min_pixels <= 0:

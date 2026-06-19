@@ -27,6 +27,15 @@ class MetricsTest(unittest.TestCase):
         self.assertEqual(summary["miou"], 0.4)
         self.assertEqual(summary["acc_0.5"], 0.5)
 
+    def test_image_errors_are_excluded(self):
+        valid = record("test:0", "ok", 0.8)
+        image_error = {"sample_id": "test:1", "status": "image_error"}
+        summary = summarize([valid, image_error])
+        self.assertEqual(summary["count"], 1)
+        self.assertEqual(summary["record_count"], 2)
+        self.assertEqual(summary["skipped_image_count"], 1)
+        self.assertEqual(summary["miou"], 0.8)
+
 
 if __name__ == "__main__":
     unittest.main()

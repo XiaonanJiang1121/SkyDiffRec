@@ -47,6 +47,9 @@ def summarize(records):
     summary = _score(records)
     summary["record_count"] = len(records)
     summary["status_counts"] = dict(Counter(record.get("status", "unknown") for record in records))
+    summary["skipped_image_count"] = sum(
+        record.get("status") == "image_error" for record in records
+    )
     latencies = [record["latency_seconds"] for record in records if "latency_seconds" in record]
     summary["mean_latency_seconds"] = sum(latencies) / len(latencies) if latencies else None
 

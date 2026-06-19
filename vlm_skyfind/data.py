@@ -11,6 +11,10 @@ from .boxes import sanitize_box
 SPLIT_FILES = {"val": "Val.json", "test": "Test.json"}
 
 
+class InvalidImageError(RuntimeError):
+    """Raised when a SkyFind image is missing or cannot be decoded."""
+
+
 def source_name(file_name):
     stem = Path(file_name).stem
     return stem.split("_", 1)[0] if "_" in stem else "unknown"
@@ -41,10 +45,15 @@ class SkyFindDataset:
     def __getitem__(self, item):
         annotation_index, sample = self.samples[item]
         image_path = self.image_dir / sample["fileName"]
-        with Image.open(image_path) as image:
-            image.verify()
-        with Image.open(image_path) as image:
-            width, height = image.size
+        try:
+            with Image.open(image_path) as image:
+                image.verify()
+            with Image.open(image_path) as image:
+                width, height = image.size
+        except Exception as exc:
+            raise InvalidImageError(
+                f"Cannot decode image {image_path}: {type(exc).__name__}: {exc}"
+            ) from exc
 
         expression = sample.get("expression", "")
         if not isinstance(expression, str) or not expression.strip():

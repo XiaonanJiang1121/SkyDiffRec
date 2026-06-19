@@ -3,7 +3,7 @@
 ## 1. Goal
 
 Measure the direct zero-shot grounding ability of five 7B/8B VLMs on SkyFind
-before using VLM features inside a diffusion or coarse-to-fine method:
+before designing later coarse-to-fine methods:
 
 1. GeoChat-7B
 2. LLaVA-OneVision-7B
@@ -29,10 +29,11 @@ Every sample is appended immediately to JSONL, so an interrupted multi-hour run
 can resume safely. A record contains the expression, image metadata, ground
 truth, full prompt, raw model response, parsed prediction, IoU, latency, and
 failure status. Failed parses receive IoU 0. Corrupt or missing source images are
-reported separately and excluded from model-quality denominators.
+reported as `image_error`, skipped without calling the model, and excluded from
+model-quality denominators. `skipped_image_count` reports their total.
 
 Each JSONL also has a `.meta.json` protocol file. Resume refuses to mix models,
-splits, prompts, coordinate conventions, or shard assignments in one output.
+splits, prompts, or coordinate conventions in one output.
 The runner stops after five consecutive inference exceptions by default, which
 prevents an adapter/environment mismatch from wasting an entire split.
 
@@ -121,31 +122,12 @@ CUDA_VISIBLE_DEVICES=0 python scripts/run_vlm_skyfind.py \
 The same command with `--split test` evaluates Test. Resume is enabled by
 default. Use `--no-resume` only when intentionally replacing an output file.
 
-## 6. Two-GPU Sharding
+## 6. Single-GPU Execution
 
-Run these in separate shells. Each process loads one model on one GPU and writes
-a different file:
-
-```bash
-CUDA_VISIBLE_DEVICES=0 python scripts/run_vlm_skyfind.py \
-  --model qwen2.5-vl-7b --model-path models/Qwen2.5-VL-7B-Instruct \
-  --data-root "$DATA_ROOT" --split test --num-shards 2 --shard-id 0 \
-  --output predictions/qwen2.5-vl-7b_test_shard0.jsonl
-
-CUDA_VISIBLE_DEVICES=1 python scripts/run_vlm_skyfind.py \
-  --model qwen2.5-vl-7b --model-path models/Qwen2.5-VL-7B-Instruct \
-  --data-root "$DATA_ROOT" --split test --num-shards 2 --shard-id 1 \
-  --output predictions/qwen2.5-vl-7b_test_shard1.jsonl
-```
-
-Merge metrics without rewriting raw predictions:
-
-```bash
-python scripts/evaluate_predictions.py \
-  predictions/qwen2.5-vl-7b_test_shard0.jsonl \
-  predictions/qwen2.5-vl-7b_test_shard1.jsonl \
-  --output predictions/qwen2.5-vl-7b_test_summary.json
-```
+The benchmark is intentionally serial: one process loads one model on the
+single RTX 4090 and evaluates one split. Keep `CUDA_VISIBLE_DEVICES=0`; do not
+launch two model processes concurrently. After one model finishes, release the
+process before starting the next model so its GPU memory is returned.
 
 ## 7. Recommended Experimental Order
 

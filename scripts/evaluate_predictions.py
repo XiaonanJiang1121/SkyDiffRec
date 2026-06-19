@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Merge one or more JSONL shards and report SkyFind metrics."""
+"""Evaluate one or more SkyFind prediction JSONL files."""
 
 import argparse
 import json

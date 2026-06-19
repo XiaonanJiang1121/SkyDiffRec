@@ -11,7 +11,11 @@ from vlm_skyfind.runner import run
 
 
 class FakeAdapter:
+    def __init__(self):
+        self.calls = 0
+
     def generate(self, _image_path, _prompt):
+        self.calls += 1
         return "[10, 20, 30, 40]"
 
 
@@ -20,14 +24,21 @@ class RunnerTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / "images").mkdir()
+            (root / "images" / "SeaDronesSee_bad.jpg").write_bytes(b"not an image")
             Image.new("RGB", (100, 80)).save(root / "images" / "Visdrone_1.jpg")
-            sample = {
+            bad_sample = {
+                "fileName": "SeaDronesSee_bad.jpg",
+                "bbox": [10, 20, 30, 40],
+                "expression": "the person in the water",
+            }
+            valid_sample = {
                 "fileName": "Visdrone_1.jpg",
                 "bbox": [10, 20, 30, 40],
                 "expression": "the car in the center",
             }
-            (root / "Val.json").write_text(json.dumps([sample]), encoding="utf-8")
-            (root / "Test.json").write_text(json.dumps([sample]), encoding="utf-8")
+            samples = [bad_sample, valid_sample]
+            (root / "Val.json").write_text(json.dumps(samples), encoding="utf-8")
+            (root / "Test.json").write_text(json.dumps(samples), encoding="utf-8")
             output = root / "predictions.jsonl"
             args = Namespace(
                 model="qwen2.5-vl-7b",
@@ -45,8 +56,6 @@ class RunnerTest(unittest.TestCase):
                 source_prefixes=None,
                 limit=None,
                 start_index=0,
-                num_shards=1,
-                shard_id=0,
                 resume=True,
                 save_tracebacks=False,
                 max_consecutive_errors=5,
@@ -56,17 +65,23 @@ class RunnerTest(unittest.TestCase):
                 qwen_max_pixels=None,
                 conversation_mode=None,
             )
-            with patch("vlm_skyfind.runner.create_adapter", return_value=FakeAdapter()):
+            adapter = FakeAdapter()
+            with patch("vlm_skyfind.runner.create_adapter", return_value=adapter):
                 run(args)
                 run(args)
 
             lines = output.read_text(encoding="utf-8").strip().splitlines()
-            self.assertEqual(len(lines), 1)
-            record = json.loads(lines[0])
-            self.assertEqual(record["status"], "ok")
-            self.assertEqual(record["iou"], 1.0)
+            self.assertEqual(len(lines), 2)
+            records = [json.loads(line) for line in lines]
+            self.assertEqual(records[0]["status"], "image_error")
+            self.assertEqual(records[1]["status"], "ok")
+            self.assertEqual(records[1]["iou"], 1.0)
+            self.assertEqual(adapter.calls, 1)
             summary = json.loads((root / "summary.json").read_text(encoding="utf-8"))
             self.assertEqual(summary["miou"], 1.0)
+            self.assertEqual(summary["count"], 1)
+            self.assertEqual(summary["record_count"], 2)
+            self.assertEqual(summary["skipped_image_count"], 1)
 
 
 if __name__ == "__main__":
