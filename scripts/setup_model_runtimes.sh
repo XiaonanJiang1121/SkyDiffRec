@@ -6,7 +6,6 @@ THIRD_PARTY_ROOT="${PROJECT_ROOT}/third_party"
 VENV_ROOT="${PROJECT_ROOT}/.venvs"
 PYTHON_BIN="${PYTHON_BIN:-python}"
 TARGET="${1:-all}"
-CONDA_BIN="${CONDA_EXE:-$(command -v conda || true)}"
 PACKAGE_INDEX_URL="${VLM_PYPI_INDEX_URL:-https://pypi.org/simple}"
 
 mkdir -p "${THIRD_PARTY_ROOT}" "${VENV_ROOT}"
@@ -42,31 +41,19 @@ install_active_runtime() {
     -e "${destination}"
 }
 
-ensure_conda_env() {
-  local env_name="$1"
+ensure_shared_torch_venv() {
+  local venv="$1"
 
-  if [[ -z "${CONDA_BIN}" ]]; then
-    echo "conda is required to isolate the LLaVA and GeoChat runtimes" >&2
-    exit 1
-  fi
-  if "${CONDA_BIN}" run -n "${env_name}" python -c "pass" >/dev/null 2>&1; then
-    echo "Reusing Conda environment: ${env_name}"
-  else
-    "${CONDA_BIN}" create -y -n "${env_name}" python=3.10 pip setuptools wheel
+  if [[ ! -x "${venv}/bin/python" ]]; then
+    "${PYTHON_BIN}" -m venv --system-site-packages "${venv}"
   fi
 }
 
-run_in_env() {
-  local env_name="$1"
-  shift
-  "${CONDA_BIN}" run --no-capture-output -n "${env_name}" "$@"
-}
-
-install_env_editable() {
-  local env_name="$1"
+install_venv_editable() {
+  local venv="$1"
   local source_name="$2"
 
-  run_in_env "${env_name}" python -m pip install \
+  "${venv}/bin/python" -m pip install \
     --no-build-isolation \
     --no-deps \
     -e "${THIRD_PARTY_ROOT}/${source_name}"
@@ -102,27 +89,24 @@ setup_internvl() {
 }
 
 setup_llava() {
-  local env_name="vlm-llava"
+  local venv="${VENV_ROOT}/llava"
 
-  log_step "LLaVA 1/6" "Fetching the pinned LLaVA-NeXT source"
+  log_step "LLaVA 1/5" "Fetching the pinned LLaVA-NeXT source"
   ensure_source \
     LLaVA-NeXT \
     https://github.com/LLaVA-VL/LLaVA-NeXT.git \
     bce12e479bc4dfee2b9c50c88137b01ff51bd483
-  log_step "LLaVA 2/6" "Fetching the pinned Transformers source"
+  log_step "LLaVA 2/5" "Fetching the pinned Transformers source"
   ensure_source \
     Transformers-LLaVA \
     https://github.com/huggingface/transformers.git \
     1c39974a4c4036fd641bc1191cc32799f85715a4
-  log_step "LLaVA 3/6" "Creating or reusing Conda environment ${env_name}"
-  ensure_conda_env "${env_name}"
-  log_step "LLaVA 4/6" "Installing the isolated PyTorch runtime (this is the largest download)"
-  run_in_env "${env_name}" python -m pip install \
-    torch==2.1.2 torchvision==0.16.2 \
-    --index-url https://download.pytorch.org/whl/cu121
-  log_step "LLaVA 5/6" "Installing pinned Python dependencies and official source packages"
-  run_in_env "${env_name}" python -m pip install \
+  log_step "LLaVA 3/5" "Creating or reusing ${venv} with the active PyTorch/CUDA runtime"
+  ensure_shared_torch_venv "${venv}"
+  log_step "LLaVA 4/5" "Installing only the pinned text runtime and official source packages"
+  "${venv}/bin/python" -m pip install \
     --index-url "${PACKAGE_INDEX_URL}" \
+    --no-deps \
     accelerate==0.29.3 \
     einops==0.6.1 \
     einops-exts==0.0.4 \
@@ -141,30 +125,27 @@ setup_llava() {
     shortuuid \
     tokenizers==0.15.2 \
     tqdm
-  install_env_editable "${env_name}" Transformers-LLaVA
-  install_env_editable "${env_name}" LLaVA-NeXT
-  log_step "LLaVA 6/6" "Verifying isolated imports and versions"
-  run_in_env "${env_name}" python -c \
-    'import torch, transformers, llava; assert torch.__version__.startswith("2.1.2"); assert transformers.__version__ == "4.40.0.dev0"; print(torch.__version__, transformers.__version__)'
+  install_venv_editable "${venv}" Transformers-LLaVA
+  install_venv_editable "${venv}" LLaVA-NeXT
+  log_step "LLaVA 5/5" "Verifying shared PyTorch and isolated Transformers/LLaVA imports"
+  "${venv}/bin/python" -c \
+    'import sys, torch, transformers, llava; assert transformers.__version__ == "4.40.0.dev0"; print(sys.executable); print("torch", torch.__version__, "transformers", transformers.__version__)'
 }
 
 setup_geochat() {
-  local env_name="vlm-geochat"
+  local venv="${VENV_ROOT}/geochat"
 
-  log_step "GeoChat 1/5" "Fetching the pinned GeoChat source"
+  log_step "GeoChat 1/4" "Fetching the pinned GeoChat source"
   ensure_source \
     GeoChat \
     https://github.com/mbzuai-oryx/GeoChat.git \
     4850920e005a849bd224d0ce35aa9db031fa5155
-  log_step "GeoChat 2/5" "Creating or reusing Conda environment ${env_name}"
-  ensure_conda_env "${env_name}"
-  log_step "GeoChat 3/5" "Installing the isolated PyTorch runtime (this is the largest download)"
-  run_in_env "${env_name}" python -m pip install \
-    torch==2.0.1 torchvision==0.15.2 \
-    --index-url https://download.pytorch.org/whl/cu118
-  log_step "GeoChat 4/5" "Installing pinned dependencies and the official source package"
-  run_in_env "${env_name}" python -m pip install \
+  log_step "GeoChat 2/4" "Creating or reusing ${venv} with the active PyTorch/CUDA runtime"
+  ensure_shared_torch_venv "${venv}"
+  log_step "GeoChat 3/4" "Installing only pinned text dependencies and the official source package"
+  "${venv}/bin/python" -m pip install \
     --index-url "${PACKAGE_INDEX_URL}" \
+    --no-deps \
     accelerate==0.21.0 \
     einops==0.6.1 \
     einops-exts==0.0.4 \
@@ -176,10 +157,10 @@ setup_geochat() {
     tokenizers==0.13.3 \
     tqdm \
     transformers==4.31.0
-  install_env_editable "${env_name}" GeoChat
-  log_step "GeoChat 5/5" "Verifying isolated imports and versions"
-  run_in_env "${env_name}" python -c \
-    'import torch, transformers, geochat; assert torch.__version__.startswith("2.0.1"); assert transformers.__version__ == "4.31.0"; print(torch.__version__, transformers.__version__)'
+  install_venv_editable "${venv}" GeoChat
+  log_step "GeoChat 4/4" "Verifying shared PyTorch and isolated Transformers/GeoChat imports"
+  "${venv}/bin/python" -c \
+    'import sys, torch, transformers, geochat; assert transformers.__version__ == "4.31.0"; print(sys.executable); print("torch", torch.__version__, "transformers", transformers.__version__)'
 }
 
 case "${TARGET}" in
@@ -199,4 +180,4 @@ case "${TARGET}" in
     ;;
 esac
 
-echo "Installed ${TARGET} runtime; InternVL/LLaVA/GeoChat use isolated environments."
+echo "Installed ${TARGET} runtime; InternVL/LLaVA/GeoChat use lightweight venvs that share the active PyTorch/CUDA installation."

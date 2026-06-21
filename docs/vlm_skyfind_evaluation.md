@@ -112,31 +112,32 @@ packages visible in the parent environment. Those warnings were not an
 InternVL installation failure; the setup is successful when its final version
 check prints the `.venvs/internvl/bin/python` path and Transformers 4.37.2.
 
-LLaVA-OneVision and GeoChat must not share that environment: their official
-code imports Transformers APIs
-from different generations. The setup script creates `vlm-llava` with the exact
-Transformers commit pinned by LLaVA-NeXT (4.40.0.dev0) and `vlm-geochat` with
-the official `transformers==4.31.0`. Their official PyTorch versions are also
-installed independently. This leaves the working `model` environment for
-Qwen, InternVL, and DeepSeek unchanged. Project code, datasets, and model
-weights remain shared and are not copied into the Conda environments.
+LLaVA-OneVision and GeoChat must not share the same Python interpreter because
+their official code imports Transformers APIs from different generations. The
+setup script therefore creates `.venvs/llava` with the exact Transformers
+commit pinned for LLaVA-NeXT (4.40.0.dev0) and `.venvs/geochat` with the
+official `transformers==4.31.0`. Like the InternVL venv, both inherit the active
+environment's existing PyTorch, torchvision, and CUDA runtime. They do not
+download duplicate multi-gigabyte PyTorch/CUDA installations. Only the small
+conflicting Python packages and official model source are isolated; model
+weights, project code, and datasets remain shared.
 
 If pip reports that it cannot download `setuptools>=61.0` while installing an
 editable official runtime, first pull the latest branch and rerun the setup
 command. The cloned source directory is reused. Do not manually install LLaVA
 or GeoChat into the working `model` environment. Verify their isolated
-environments only if the retry still fails:
+venvs only if the retry still fails:
 
 ```bash
-conda run -n vlm-llava python -c "import setuptools; print(setuptools.__version__)"
-conda run -n vlm-geochat python -c "import setuptools; print(setuptools.__version__)"
+.venvs/llava/bin/python -c "import torch, transformers, llava; print(torch.__version__, transformers.__version__)"
+.venvs/geochat/bin/python -c "import torch, transformers, geochat; print(torch.__version__, transformers.__version__)"
 ```
 
 Run LLaVA and GeoChat through their dedicated environments:
 
 ```bash
-conda run --no-capture-output -n vlm-llava python scripts/run_vlm_skyfind.py --help
-conda run --no-capture-output -n vlm-geochat python scripts/run_vlm_skyfind.py --help
+.venvs/llava/bin/python scripts/run_vlm_skyfind.py --help
+.venvs/geochat/bin/python scripts/run_vlm_skyfind.py --help
 ```
 
 Both keep their vision towers in FP16, so their evaluation commands must include

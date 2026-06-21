@@ -106,7 +106,7 @@ python scripts/summarize_table4.py \
 
 
 # llava-onevision-7b
-conda run --no-capture-output -n vlm-llava python scripts/run_vlm_skyfind.py \
+.venvs/llava/bin/python scripts/run_vlm_skyfind.py \
   --model llava-onevision-7b \
   --data-root /root/autodl-tmp/BioLoc/data/SkyFind_data \
   --split val \
@@ -137,7 +137,7 @@ conda run --no-capture-output -n vlm-llava python scripts/run_vlm_skyfind.py \
     # 视觉塔 dtype 不一致或强制依赖 flash-attn。
 
 # geochat-7b
-conda run --no-capture-output -n vlm-geochat python scripts/run_vlm_skyfind.py \
+.venvs/geochat/bin/python scripts/run_vlm_skyfind.py \
   --model geochat-7b \
   --data-root /root/autodl-tmp/BioLoc/data/SkyFind_data \
   --split val \

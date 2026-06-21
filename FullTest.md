@@ -131,13 +131,13 @@ bash scripts/setup_model_runtimes.sh internvl
 
 ```bash
 bash scripts/setup_model_runtimes.sh geochat
-conda run -n vlm-geochat python -c "import torch, transformers, geochat; print(torch.__version__, transformers.__version__)"
+.venvs/geochat/bin/python -c "import torch, transformers, geochat; print(torch.__version__, transformers.__version__)"
 ```
 
 ### Val 全集
 
 ```bash
-conda run --no-capture-output -n vlm-geochat python scripts/run_vlm_skyfind.py \
+.venvs/geochat/bin/python scripts/run_vlm_skyfind.py \
   --model geochat-7b \
   --data-root /root/autodl-tmp/BioLoc/data/SkyFind_data \
   --split val \
@@ -152,7 +152,7 @@ conda run --no-capture-output -n vlm-geochat python scripts/run_vlm_skyfind.py \
 ### Test 全集
 
 ```bash
-conda run --no-capture-output -n vlm-geochat python scripts/run_vlm_skyfind.py \
+.venvs/geochat/bin/python scripts/run_vlm_skyfind.py \
   --model geochat-7b \
   --data-root /root/autodl-tmp/BioLoc/data/SkyFind_data \
   --split test \
@@ -170,13 +170,13 @@ conda run --no-capture-output -n vlm-geochat python scripts/run_vlm_skyfind.py \
 
 ```bash
 bash scripts/setup_model_runtimes.sh llava
-conda run -n vlm-llava python -c "import torch, transformers, llava; print(torch.__version__, transformers.__version__)"
+.venvs/llava/bin/python -c "import torch, transformers, llava; print(torch.__version__, transformers.__version__)"
 ```
 
 ### Val 全集
 
 ```bash
-conda run --no-capture-output -n vlm-llava python scripts/run_vlm_skyfind.py \
+.venvs/llava/bin/python scripts/run_vlm_skyfind.py \
   --model llava-onevision-7b \
   --data-root /root/autodl-tmp/BioLoc/data/SkyFind_data \
   --split val \
@@ -192,7 +192,7 @@ conda run --no-capture-output -n vlm-llava python scripts/run_vlm_skyfind.py \
 ### Test 全集
 
 ```bash
-conda run --no-capture-output -n vlm-llava python scripts/run_vlm_skyfind.py \
+.venvs/llava/bin/python scripts/run_vlm_skyfind.py \
   --model llava-onevision-7b \
   --data-root /root/autodl-tmp/BioLoc/data/SkyFind_data \
   --split test \
