@@ -9,7 +9,7 @@ SkyFind Table 4 metrics. Percentages below are `IoU@0.5 / IoU@mean`.
 | --- | ---: | ---: | --- |
 | Qwen2.5-VL-7B | 5,000/5,000 | 16,546/16,546 | complete |
 | DeepSeek-VL-7B | 5,000/5,000 | 16,546/16,546 | complete |
-| InternVL2.5-8B | 5,000/5,000 | 128/16,546 | Test still running |
+| InternVL2.5-8B | 5,000/5,000 | 16,546/16,546 | complete |
 
 The completed Test files contain 34 `image_error` records. They are retained
 for auditability but correctly excluded from the 16,512-sample metric
@@ -21,7 +21,7 @@ denominator. Val contains no image errors.
 | --- | ---: | ---: | ---: |
 | Qwen2.5-VL-7B | 32.74 / 20.38 | 37.02 / 22.62 | **34.88 / 21.50** |
 | DeepSeek-VL-7B | 0.68 / 0.21 | 0.28 / 0.09 | **0.48 / 0.15** |
-| InternVL2.5-8B | 1.02 / 0.40 | pending | pending |
+| InternVL2.5-8B | 1.02 / 0.40 | 0.60 / 0.19 | **0.81 / 0.29** |
 
 Qwen has a 98.28% Val parse rate and 98.83% Test parse rate. Its raw mIoU is
 28.62% on Val and 33.79% on Test. The result is a valid and strong direct-box
@@ -40,10 +40,14 @@ inference errors. All 125 inference errors are CUDA out-of-memory failures with
 roughly 2.4 GiB reserved but unallocated, consistent with allocator
 fragmentation under dynamic high-resolution tiling. These are runtime failures,
 not valid model predictions, so the current 1.02 / 0.40 Val row is provisional.
-The failed samples should be retried after Test completes before reporting the
-final InternVL baseline.
+The failed samples should be retried before reporting the final InternVL
+baseline. Test completed without model inference errors and has a 98.64% parse
+rate.
 
-InternVL also emits some coordinates above its official `[0,1000]` grounding
-range and occasional zero boxes; those are correctly counted as parse failures
-rather than silently clamped into fabricated predictions.
-
+InternVL emits mixed coordinate scales: 552 Val and 5,451 Test responses contain
+four coordinates entirely within `[0,1]`, while most other valid responses use
+the official `[0,1000]` convention. The protocol-corrected figures above
+deterministically interpret the former as fractional coordinates and the latter as
+normalized-to-1000 coordinates. This changes Test from 0.575 / 0.180 to
+0.600 / 0.188 but does not alter the main conclusion. Coordinates above 1000
+and zero-area boxes remain parse failures rather than fabricated predictions.

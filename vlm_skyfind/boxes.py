@@ -76,6 +76,13 @@ def convert_coordinates(values, width, height, mode="pixel", raw_text=""):
             return None, "ambiguous"
 
     x1, y1, x2, y2 = values
+    if detected_mode == "normalized_1000_or_1":
+        detected_mode = (
+            "normalized_1"
+            if min(values) >= 0 and max(values) <= 1.0
+            else "normalized_1000"
+        )
+
     if detected_mode == "normalized_1":
         x1, x2 = x1 * width, x2 * width
         y1, y2 = y1 * height, y2 * height

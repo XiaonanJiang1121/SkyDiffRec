@@ -82,6 +82,7 @@ pip install -r requirements-vlm.txt
 export PYTHONPATH="$PWD:${PYTHONPATH:-}"
 export OMP_NUM_THREADS=1
 export MKL_NUM_THREADS=1
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 ```
 
 Qwen2.5-VL and InternVL use Transformers plus their remote model code.
@@ -186,16 +187,22 @@ shown above. Both options can still be overridden explicitly.
 | Model | Resolved mode | Basis |
 | --- | --- | --- |
 | Qwen2.5-VL-7B | `pixel` | Saved SkyFind responses include coordinates above 1000 for 1920-wide images; RSVG applies no box restoration function |
-| InternVL2.5-8B | `normalized_1000` | Official RefCOCO evaluator divides by 1000, then multiplies x by original width and y by original height |
+| InternVL2.5-8B | `normalized_1000_or_1` | Official RefCOCO uses `[0,1000]`; saved SkyFind outputs also contain unambiguous fractional `[0,1]` boxes |
 | DeepSeek-VL-7B | `auto` | Official DeepSeek-VL release defines no grounding-coordinate contract |
 | LLaVA/GeoChat | `auto` | Deferred until their runtimes are validated |
 
-For a normalized InternVL prediction, conversion is performed before IoU:
+For an InternVL prediction whose coordinates exceed 1, the official conversion
+is performed before IoU:
 
 ```text
 x_pixel = x_normalized * image_width / 1000
 y_pixel = y_normalized * image_height / 1000
 ```
+
+When all four coordinates are within `[0,1]`, they are instead multiplied
+directly by width and height. This deterministic fallback uses only the raw
+output range and never examines the ground-truth box. Existing JSONL files can
+be corrected with `scripts/reparse_predictions.py` without rerunning inference.
 
 DeepSeek `auto` accepts `[0,1]` coordinates and responses that explicitly state
 their scale. A four-number list that could mean either pixels or `[0,1000]` is

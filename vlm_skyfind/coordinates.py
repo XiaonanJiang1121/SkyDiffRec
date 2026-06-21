@@ -9,11 +9,11 @@ _MODEL_NATIVE_COORDINATES = {
         "pixel",
         "RSVG-ZeroOV behavior and saved SkyFind responses",
     ),
-    # InternVL's official RefCOCO evaluator divides predictions by 1000 before
-    # multiplying x by width and y by height.
+    # InternVL's official RefCOCO evaluator uses [0,1000], while its saved
+    # SkyFind responses also contain unambiguous fractional [0,1] boxes.
     "internvl2.5-8b": (
-        "normalized_1000",
-        "InternVL official RefCOCO grounding evaluator",
+        "normalized_1000_or_1",
+        "InternVL official [0,1000] convention with observed [0,1] fallback",
     ),
     # DeepSeek-VL 7B does not publish a grounding-coordinate contract. Accept
     # only coordinate systems that can be inferred without guessing.

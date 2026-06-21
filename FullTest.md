@@ -10,6 +10,7 @@ export PYTHONPATH="$PWD:${PYTHONPATH:-}"
 export CUDA_VISIBLE_DEVICES=0
 export OMP_NUM_THREADS=1
 export MKL_NUM_THREADS=1
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 ```
 
 所有全集命令均不包含 `--limit`。断点续跑默认开启；任务中断后直接重新执行同一条命令，不要添加 `--no-resume`。Val 和 Test 中的坏图会记录为 `image_error`，不调用模型，也不计入指标。
@@ -125,6 +126,23 @@ bash scripts/setup_model_runtimes.sh internvl
   --summary-output predictions/internvl2.5-8b_test_rsvg_full_summary.json
 ```
 
+已经使用旧版固定 `[0,1000]` 解析完成 InternVL 推理时，不需要重新调用模型。
+使用保存的 raw response 生成混合归一化协议结果：
+
+```bash
+python scripts/reparse_predictions.py \
+  --model internvl2.5-8b \
+  --input predictions/internvl2.5-8b_val_rsvg_full.jsonl \
+  --output predictions/internvl2.5-8b_val_rsvg_full_reparsed.jsonl \
+  --summary-output predictions/internvl2.5-8b_val_rsvg_full_reparsed_summary.json
+
+python scripts/reparse_predictions.py \
+  --model internvl2.5-8b \
+  --input predictions/internvl2.5-8b_test_rsvg_full.jsonl \
+  --output predictions/internvl2.5-8b_test_rsvg_full_reparsed.jsonl \
+  --summary-output predictions/internvl2.5-8b_test_rsvg_full_reparsed_summary.json
+```
+
 ## GeoChat-7B 全集测试
 
 首次运行前：
@@ -172,6 +190,9 @@ bash scripts/setup_model_runtimes.sh geochat
 bash scripts/setup_model_runtimes.sh llava
 .venvs/llava/bin/python -c "import torch, transformers, llava; print(torch.__version__, transformers.__version__)"
 ```
+
+运行脚本会默认启用 PyTorch 可扩展显存段，并在每个样本前释放未使用缓存。
+这保留 FP16 权重与原始图像预处理，不需要降低图像分辨率或量化模型。
 
 ### Val 全集
 

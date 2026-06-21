@@ -51,11 +51,15 @@ class LlavaAdapter(BaseVLMAdapter):
         )
         self.tokenizer, self.model, self.image_processor = loaded[:3]
         self.model.eval()
+        for name in ("temperature", "top_p", "top_k"):
+            setattr(self.model.generation_config, name, None)
         self.conversation_mode = (
             self.options.get("conversation_mode") or self.default_conversation_mode
         )
 
     def generate(self, image_path, prompt):
+        if self.torch.cuda.is_available():
+            self.torch.cuda.empty_cache()
         with Image.open(image_path) as image:
             image = image.convert("RGB")
             image_size = image.size
@@ -93,6 +97,9 @@ class LlavaAdapter(BaseVLMAdapter):
                 image_sizes=[image_size],
                 max_new_tokens=self.max_new_tokens,
                 do_sample=False,
+                temperature=None,
+                top_p=None,
+                top_k=None,
                 use_cache=True,
             )
         if (

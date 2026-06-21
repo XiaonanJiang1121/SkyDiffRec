@@ -3,13 +3,14 @@ export PYTHONPATH="$PWD:${PYTHONPATH:-}"
 export CUDA_VISIBLE_DEVICES=0
 export OMP_NUM_THREADS=1
 export MKL_NUM_THREADS=1
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 # 首次运行 DeepSeek/InternVL 前安装对应运行时。InternVL 使用独立轻量
 # venv，保持当前 Qwen/DeepSeek 可用环境不变。
 bash scripts/setup_model_runtimes.sh deepseek
 bash scripts/setup_model_runtimes.sh internvl
 
-# LLaVA/GeoChat 当前暂停，不影响以下三个模型的实验。
+# LLaVA/GeoChat 使用各自的轻量 venv，并共享当前 PyTorch/CUDA。
 
 # Qwen
 python scripts/run_vlm_skyfind.py \

@@ -12,6 +12,7 @@ DEFAULT_MODEL_CONFIG = PROJECT_ROOT / "configs" / "vlm_models.json"
 DEFAULT_DATA_ROOT = "/root/autodl-tmp/BioLoc/data/SkyFind_data"
 
 sys.path.insert(0, str(PROJECT_ROOT))
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
 
 def normalize_thread_environment():
@@ -57,6 +58,7 @@ def parse_args():
             "auto",
             "normalized_1",
             "normalized_1000",
+            "normalized_1000_or_1",
         ),
     )
     parser.add_argument("--source-prefixes", nargs="*", default=None)

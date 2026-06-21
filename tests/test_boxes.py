@@ -25,6 +25,20 @@ class BoxParsingTest(unittest.TestCase):
         self.assertEqual(box, [192.0, 270.0, 960.0, 810.0])
         self.assertEqual(mode, "normalized_1000")
 
+    def test_mixed_internvl_mode_accepts_fractional_box(self):
+        box, mode = parse_prediction(
+            "[0.25, 0.5, 0.75, 1.0]", 200, 100, "normalized_1000_or_1"
+        )
+        self.assertEqual(box, [50.0, 50.0, 150.0, 100.0])
+        self.assertEqual(mode, "normalized_1")
+
+    def test_mixed_internvl_mode_defaults_to_official_1000_scale(self):
+        box, mode = parse_prediction(
+            "[250, 500, 750, 1000]", 200, 100, "normalized_1000_or_1"
+        )
+        self.assertEqual(box, [50.0, 50.0, 150.0, 100.0])
+        self.assertEqual(mode, "normalized_1000")
+
     def test_coordinate_labels_are_not_false_predictions(self):
         box, mode = parse_prediction(
             "I cannot provide coordinates (x1, y1, x2, y2).", 100, 80, "pixel"

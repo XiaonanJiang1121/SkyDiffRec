@@ -8,9 +8,9 @@ class CoordinateProfileTest(unittest.TestCase):
         mode, _ = resolve_coordinate_mode("qwen2.5-vl-7b", "model_native")
         self.assertEqual(mode, "pixel")
 
-    def test_internvl_uses_normalized_1000(self):
+    def test_internvl_uses_observed_mixed_normalized_scales(self):
         mode, _ = resolve_coordinate_mode("internvl2.5-8b", "model_native")
-        self.assertEqual(mode, "normalized_1000")
+        self.assertEqual(mode, "normalized_1000_or_1")
 
     def test_explicit_mode_overrides_profile(self):
         mode, basis = resolve_coordinate_mode("internvl2.5-8b", "pixel")
