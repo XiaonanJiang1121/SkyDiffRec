@@ -1,199 +1,33 @@
-# DiffusionSkyFind
+# VLMSkyFind
 
-Date: 2026-06-16
+`VLMSkyFind` evaluates the zero-shot referring-object localization ability of
+five 7B/8B vision-language models on the SkyFind Val and Test splits:
 
-This folder records the diffusion-native SkyFind research direction. It is kept
-separate from `BioLoc/` so that diffusion experiments do not become coupled to
-the AerialVG-style BioLoc baseline.
+1. GeoChat-7B
+2. LLaVA-OneVision-7B
+3. Qwen2.5-VL-7B-Instruct
+4. DeepSeek-VL-7B-Chat
+5. InternVL2.5-8B
 
-## Research Position
+The evaluation reproduces the released RSVG-ZeroOV prompt, runs one model at a
+time on a single GPU, and records raw responses, parsed boxes, IoU, latency, and
+failure status in resumable JSONL files. Images enter each model at their
+original SkyFind dimensions before model-native preprocessing. Missing or
+corrupt images in either Val or Test are logged and skipped without interrupting
+the split.
 
-SkyFind is a UAV-view referring expression localization task:
+See [`docs/vlm_skyfind_evaluation.md`](docs/vlm_skyfind_evaluation.md) for the
+evaluation protocol and server commands. The initial output audit is recorded in
+[`docs/smoke_result_audit_2026-06-19.md`](docs/smoke_result_audit_2026-06-19.md).
+The strict-prompt result and Table 4 metric review is in
+[`docs/smoke_result_review_2026-06-20.md`](docs/smoke_result_review_2026-06-20.md).
+The first complete Qwen/DeepSeek result audit is in
+[`docs/full_result_review_2026-06-21.md`](docs/full_result_review_2026-06-21.md).
 
-```text
-image + expression -> target bbox
-```
-
-The diffusion direction should therefore focus on perception-space denoising:
-
-```text
-noisy boxes / noisy spatial fields
--> text-conditioned visual denoising
--> final referred target bbox
-```
-
-`DiffusionUavLoc` is not used as a main method reference because it solves
-cross-view UAV-satellite retrieval/geolocalization rather than referring bbox
-localization. It may only provide weak background inspiration about fixed-step
-diffusion representations or text-free conditioning.
-
-## Experiment Route
-
-### Experiment 0: DiffusionREC Original on SkyFind
-
-Goal:
-
-```text
-Run the original DiffusionREC-style method on SkyFind with only the necessary
-dataset adaptation.
-```
-
-Rules:
-
-1. Keep the DiffusionREC model, loss, training loop, and sampling behavior as
-   close to the reference implementation as possible.
-2. Add only the minimal SkyFind dataset branch needed to read SkyFind images,
-   expressions, and boxes.
-3. Do not add long-expression modules.
-4. Do not add spatial reasoning modules.
-5. Do not add aerial-specific priors.
-6. Record metrics and failure cases as the baseline for later method design.
-
-Primary metrics:
-
-```text
-Acc@0.5
-mIoU
-```
-
-Additional diagnostics:
-
-```text
-Acc@0.7
-small-object subset Acc@0.5 / Acc@0.7
-expression length buckets
-qualitative failure cases
-training speed and memory
-```
-
-Detailed migration notes:
-
-```text
-DiffusionSkyFind/diffusionrec_skyfind_migration.md
-DiffusionSkyFind/docs/diffusionrec_skyfind_dataset_adaptation_spec.md
-DiffusionSkyFind/docs/diffusionrec_delta_summary.md
-```
-
-### Experiment 1: Long Expression Handling
-
-Motivation:
-
-SkyFind expressions are longer and more spatially descriptive than typical
-RefCOCO-style phrases. A direct short-phrase text encoder may truncate or dilute
-important target, attribute, and relation words.
-
-Candidate directions:
-
-```text
-hierarchical text encoding
-target / attribute / relation token selection
-long-context text encoder
-sentence decomposition before diffusion conditioning
-```
-
-This experiment should start only after Experiment 0 produces a reliable
-baseline.
-
-### Experiment 2: Spatial Reasoning Enhancement
-
-Motivation:
-
-SkyFind UAV images contain small targets, repeated objects, and strong spatial
-language. Existing diffusion REC methods denoise boxes but do not explicitly
-model aerial spatial reasoning.
-
-Candidate directions:
-
-```text
-coordinate-aware box denoising
-expression-conditioned spatial prior
-map-guided box renewal
-landmark/relation-aware text supervision
-Box + Spatial Prior Joint Diffusion
-```
-
-`Box + Spatial Prior Joint Diffusion` is currently remembered as a strong
-future direction, not part of Experiment 0.
-
-### Experiment 3: Few-Step / One-Step Box Diffusion
-
-Motivation:
-
-Multi-step diffusion may be too slow for practical localization. Once a strong
-multi-step SkyFind diffusion model exists, compress it into fewer denoising
-steps.
-
-Potential references:
-
-```text
-Consistency Models
-Rectified Flow / Flow Matching
-Shortcut Models
-Distribution Matching Distillation
-```
-
-The one-step direction should be explored after there is a trained SkyFind
-diffusion teacher or at least a validated few-step baseline.
-
-## Code Boundary
-
-External reference code stays under:
-
-```text
-BioLoc/reference/DiffusionREC
-BioLoc/reference/DiffusionDet
-BioLoc/reference/RSVG-ZeroOV
-```
-
-`BioLoc/reference/DiffusionREC` is treated as an external reference only.
-Experiment code lives under:
-
-```text
-DiffusionSkyFind/baselines/diffusionrec_original
-```
-
-New diffusion experiment code should live under:
-
-```text
-DiffusionSkyFind/
-  configs/
-  datasets/
-  models/
-  training/
-  evaluation/
-  tools/
-```
-
-Avoid writing new SkyFind diffusion code inside `BioLoc/` unless it is a small
-utility explicitly shared by both projects.
-
-## Environment
-
-Server environment file:
-
-```text
-DiffusionSkyFind/requirements.txt
-```
-
-Important:
-
-```text
-torch / torchvision / detectron2 should be installed with CUDA-matched builds
-for the target server before or together with the Python requirements.
-```
-
-After installing Python packages, install the English spaCy model required by
-SceneGraphParser:
-
-```bash
-python -m spacy download en_core_web_sm
-```
-
-## Audit Tools
-
-Available utilities:
-
-```text
-DiffusionSkyFind/tools/inspect_skyfind_dataset.py
-DiffusionSkyFind/tools/audit_skyfind_parser.py
-```
+The final-coordinate JSONL files can also be audited with
+`scripts/analyze_box_failure_modes.py`. It reports parse coverage, predicted/GT
+area-ratio statistics, normalized center error, centered-box scale/shape
+failure, and breakdowns by target size, expression length, spatial relations,
+and ordinals. `scripts/audit_qwen_postprocessing.py` separately reproduces the
+strict-versus-sanitize sensitivity check; strict is the reported policy for all
+four models.

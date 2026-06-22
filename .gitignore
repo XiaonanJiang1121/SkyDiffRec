@@ -23,8 +23,11 @@ checkpoints/
 
 # Local datasets and generated artifacts
 /data/
+/models/
 /predictions/
 /visualizations/
+/third_party/
+/.venvs/
 
 # Temporary files
 tmp/

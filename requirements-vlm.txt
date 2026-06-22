@@ -1,0 +1,15 @@
+# Common evaluation runtime. Install a CUDA-matched torch build first.
+accelerate
+einops
+numpy
+Pillow>=9.5
+sentencepiece
+timm
+torch>=2.1
+torchvision
+tqdm
+transformers>=4.49,<5
+qwen-vl-utils
+
+# Model-specific packages are intentionally documented separately because
+# DeepSeek-VL, LLaVA-NeXT, and GeoChat may pin incompatible transformers builds.
