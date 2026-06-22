@@ -13,6 +13,7 @@ from vlm_skyfind.boxes import (  # noqa: E402
     box_iou,
     extract_four_coordinates,
     sanitize_box,
+    validate_box_strict,
 )
 from vlm_skyfind.metrics import summarize, write_summary  # noqa: E402
 from vlm_skyfind.qwen_coordinates import (  # noqa: E402
@@ -35,6 +36,12 @@ def _parse_args():
     parser.add_argument("--output", required=True)
     parser.add_argument("--preprocessor-config", required=True)
     parser.add_argument("--summary-output", default=None)
+    parser.add_argument(
+        "--box-policy",
+        choices=("strict", "sanitize"),
+        default="strict",
+        help="Use strict for final reporting; sanitize is audit-only",
+    )
     parser.add_argument(
         "--min-pixels",
         type=int,
@@ -69,7 +76,7 @@ def _load_records(path):
     return records
 
 
-def _reparse_record(record, config):
+def _reparse_record(record, config, box_policy):
     if record.get("status") in ("image_error", "inference_error"):
         return record
 
@@ -81,12 +88,20 @@ def _reparse_record(record, config):
         box = None
     else:
         box, _, _ = restore_coordinates(values, width, height, config)
-        box = sanitize_box(box, width, height)
+        if box_policy == "strict":
+            box = validate_box_strict(box)
+        else:
+            box = sanitize_box(box, width, height)
 
     record["coordinate_mode_requested"] = "model_native"
     record["coordinate_mode_resolved"] = COORDINATE_MODE
     record["coordinate_mode_basis"] = COORDINATE_BASIS
     record["coordinate_mode"] = COORDINATE_MODE
+    record["box_validation"] = (
+        "strict_xyxy_no_reorder_no_clamp"
+        if box_policy == "strict"
+        else "sanitize_reorder_and_clamp"
+    )
     record["qwen_processed_width"] = processed_width
     record["qwen_processed_height"] = processed_height
     record["pred_box"] = box
@@ -95,7 +110,9 @@ def _reparse_record(record, config):
     return record
 
 
-def _write_protocol(input_path, output_path, config_path, config):
+def _write_protocol(
+    input_path, output_path, config_path, config, box_policy
+):
     input_protocol = Path(str(input_path) + ".meta.json")
     protocol = {}
     if input_protocol.exists():
@@ -107,6 +124,12 @@ def _write_protocol(input_path, output_path, config_path, config):
             "coordinate_mode_requested": "model_native",
             "coordinate_mode": COORDINATE_MODE,
             "coordinate_mode_basis": COORDINATE_BASIS,
+            "box_validation": (
+                "strict_xyxy_no_reorder_no_clamp"
+                if box_policy == "strict"
+                else "sanitize_reorder_and_clamp"
+            ),
+            "qwen_box_policy": box_policy,
             "reparsed_from": str(input_path),
             "qwen_preprocessor_config": str(config_path),
             "qwen_resize": config,
@@ -136,13 +159,20 @@ def main():
         raise SystemExit("min_pixels cannot exceed max_pixels")
 
     records = [
-        _reparse_record(record, config) for record in _load_records(input_path)
+        _reparse_record(record, config, args.box_policy)
+        for record in _load_records(input_path)
     ]
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w", encoding="utf-8") as handle:
         for record in records:
             handle.write(json.dumps(record, ensure_ascii=True) + "\n")
-    _write_protocol(input_path, output_path, config_path, config)
+    _write_protocol(
+        input_path,
+        output_path,
+        config_path,
+        config,
+        args.box_policy,
+    )
 
     summary = summarize(records)
     print(json.dumps(summary, indent=2, ensure_ascii=True))

@@ -1,15 +1,6 @@
 """Strict, model-specific coordinate protocols for saved VLM responses."""
 
-import math
-
-
-def _valid_xyxy(box):
-    return (
-        box is not None
-        and all(math.isfinite(value) for value in box)
-        and box[2] > box[0]
-        and box[3] > box[1]
-    )
+from .boxes import validate_box_strict
 
 
 def _scale(values, width, height, denominator):
@@ -40,7 +31,7 @@ def convert_internvl_official(values, width, height):
     else:
         mode = "internvl_official_normalized_1"
         box = _scale(values, width, height, 1.0)
-    return (box if _valid_xyxy(box) else None), mode
+    return validate_box_strict(box), mode
 
 
 def convert_uncontracted_vlm(
@@ -84,4 +75,4 @@ def convert_uncontracted_vlm(
     else:
         raise ValueError(f"Unknown ambiguous coordinate policy: {ambiguous_policy}")
 
-    return (box if _valid_xyxy(box) else None), mode
+    return validate_box_strict(box), mode

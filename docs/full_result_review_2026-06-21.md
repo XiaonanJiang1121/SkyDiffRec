@@ -38,9 +38,9 @@ denominator. Val contains no image errors.
   <tbody>
     <tr>
       <td>Qwen2.5-VL-7B</td>
-      <td>37.52</td><td>29.45</td>
-      <td>45.46</td><td>31.44</td>
-      <td><strong>41.49</strong></td><td><strong>30.44</strong></td>
+      <td>37.48</td><td>29.38</td>
+      <td>45.40</td><td>31.40</td>
+      <td><strong>41.44</strong></td><td><strong>30.39</strong></td>
     </tr>
     <tr>
       <td>DeepSeek-VL-7B</td>
@@ -63,14 +63,29 @@ denominator. Val contains no image errors.
   </tbody>
 </table>
 
-Qwen has a 98.28% Val parse rate and 98.82% Test parse rate. Its raw mIoU is
-33.78% on Val and 40.18% on Test. The final parser reconstructs the official
+Qwen has a 98.24% Val parse rate and 98.55% Test parse rate. Its raw mIoU is
+33.73% on Val and 40.15% on Test. The final parser reconstructs the official
 Qwen smart-resize dimensions (`patch_size * merge_size = 28`) and maps each
 generated resized-input box back to original SkyFind pixels before IoU. The
 calculation uses only the saved raw responses, original image dimensions, and
 the official processor configuration; no model inference or image loading is
-performed. The old 34.88 / 21.50 average incorrectly treated generated
+performed. It then applies the same strict no-reorder/no-clamp validation as the
+other models. The old 34.88 / 21.50 average incorrectly treated generated
 resized-input coordinates as original pixels and is superseded.
+
+### Qwen strict-versus-sanitize audit
+
+Before box policy is applied, Val contains 3 reversed-x boxes, 38 out-of-bound
+boxes, and 85 responses without four coordinates. Test contains 48 reversed-x
+boxes, 78 out-of-bound boxes, 192 responses without four coordinates, and the
+34 excluded image errors. Neither split contains a reversed-y or zero-area
+box. These categories can overlap. Strict validation retains valid out-of-image
+`xyxy` boxes but rejects reversed or zero-area boxes.
+
+The former repairing policy gives an Average of 41.49 / 30.44; strict gives
+41.44 / 30.39. Sanitizing therefore changes `IoU@0.5` by only +0.050 points and
+`IoU@mean` by +0.058 points. The Qwen conclusion is stable, but strict is used
+as the primary row for cross-model fairness.
 
 DeepSeek has an even higher parse rate (98.86% Val and 99.85% Test), so its low
 IoU is not caused by the parser. Its median predicted box area is about 5.85

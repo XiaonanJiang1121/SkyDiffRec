@@ -7,6 +7,14 @@ from pathlib import Path
 
 SKYFIND_IOU_THRESHOLDS = (0.5, 0.6, 0.7, 0.8, 0.9)
 
+FINAL_COORDINATE_PROTOCOLS = {
+    "qwen2.5-vl-7b": "qwen_resized_pixel",
+    "internvl2.5-8b": "internvl_official_mixed",
+    "llava-onevision-7b": "uncontracted_vlm_strict",
+    "deepseek-vl-7b": "uncontracted_vlm_strict",
+}
+FINAL_BOX_VALIDATION = "strict_xyxy_no_reorder_no_clamp"
+
 
 def expression_bucket(expression):
     length = len(expression.split())
@@ -103,6 +111,30 @@ def summarize_table4(model, val_records, test_records):
             "iou_at_mean_percent": average_iou_mean * 100.0,
         },
     }
+
+
+def validate_final_protocol(model, records):
+    """Reject provisional raw-run records from final Table 4 reporting."""
+    expected_mode = FINAL_COORDINATE_PROTOCOLS.get(model)
+    if expected_mode is None:
+        return
+    for record in records:
+        if record.get("status") in ("image_error", "inference_error"):
+            continue
+        if record.get("coordinate_mode_resolved") != expected_mode:
+            raise ValueError(
+                f"{model} final reporting requires coordinate_mode_resolved="
+                f"{expected_mode!r}; got "
+                f"{record.get('coordinate_mode_resolved')!r} for "
+                f"{record.get('sample_id', 'unknown sample')}"
+            )
+        if record.get("box_validation") != FINAL_BOX_VALIDATION:
+            raise ValueError(
+                f"{model} final reporting requires box_validation="
+                f"{FINAL_BOX_VALIDATION!r}; got "
+                f"{record.get('box_validation')!r} for "
+                f"{record.get('sample_id', 'unknown sample')}"
+            )
 
 
 def summarize(records):

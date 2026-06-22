@@ -29,6 +29,16 @@ def main():
         parser.error("--output must differ from --input")
 
     mode, basis = resolve_coordinate_mode(args.model, args.coordinate_mode)
+    if mode == "qwen_resized_pixel":
+        parser.error(
+            "Qwen resized-input coordinates require "
+            "scripts/reparse_qwen_predictions.py and its preprocessor config"
+        )
+    if mode in ("internvl_official_mixed", "uncontracted_vlm_strict"):
+        parser.error(
+            "This model's final strict protocol requires "
+            "scripts/reparse_mixed_coordinates.py"
+        )
     records = []
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with input_path.open("r", encoding="utf-8") as source, output_path.open(

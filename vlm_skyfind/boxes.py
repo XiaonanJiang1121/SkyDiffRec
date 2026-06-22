@@ -112,6 +112,16 @@ def sanitize_box(box, width, height):
     return [x1, y1, x2, y2]
 
 
+def validate_box_strict(box):
+    """Accept an existing xyxy box without reordering or clamping it."""
+    if box is None or not _finite(box):
+        return None
+    x1, y1, x2, y2 = box
+    if x2 <= x1 or y2 <= y1:
+        return None
+    return [x1, y1, x2, y2]
+
+
 def box_iou(box_a, box_b):
     if box_a is None or box_b is None:
         return 0.0

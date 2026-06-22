@@ -1,6 +1,6 @@
 import unittest
 
-from vlm_skyfind.boxes import box_iou, parse_prediction
+from vlm_skyfind.boxes import box_iou, parse_prediction, validate_box_strict
 
 
 class BoxParsingTest(unittest.TestCase):
@@ -59,6 +59,13 @@ class BoxParsingTest(unittest.TestCase):
     def test_reorders_and_clamps(self):
         box, _ = parse_prediction("[120, 70, -10, 10]", 100, 80, "pixel")
         self.assertEqual(box, [0.0, 10.0, 100.0, 70.0])
+
+    def test_strict_validation_does_not_reorder_or_clamp(self):
+        self.assertIsNone(validate_box_strict([120, 70, -10, 10]))
+        self.assertEqual(
+            validate_box_strict([-10, 10, 120, 70]),
+            [-10, 10, 120, 70],
+        )
 
     def test_iou(self):
         self.assertAlmostEqual(box_iou([0, 0, 10, 10], [5, 5, 15, 15]), 25 / 175)

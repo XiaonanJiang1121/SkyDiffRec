@@ -2,28 +2,26 @@
 
 
 _MODEL_NATIVE_COORDINATES = {
-    # Qwen2.5-VL emits coordinates in the original image pixel space for the
-    # released RSVG-ZeroOV prompt. The processor resizes model inputs but does
-    # not expose or apply a bounding-box restoration step.
+    # Qwen2.5-VL emits resized-input pixel coordinates. Final evaluation must
+    # restore them with the exact processor configuration.
     "qwen2.5-vl-7b": (
-        "pixel",
-        "RSVG-ZeroOV behavior and saved SkyFind responses",
+        "qwen_resized_pixel",
+        "Qwen resized-input pixels restored with its processor configuration",
     ),
-    # InternVL's official RefCOCO evaluator uses [0,1000], while its saved
-    # SkyFind responses also contain unambiguous fractional [0,1] boxes.
+    # Match InternVL's released RefCOCO evaluation branch exactly.
     "internvl2.5-8b": (
-        "normalized_1000_or_1",
-        "InternVL official [0,1000] convention with observed [0,1] fallback",
+        "internvl_official_mixed",
+        "InternVL official sum(box) mixed [0,1]/[0,1000] rule",
     ),
     # DeepSeek-VL 7B does not publish a grounding-coordinate contract. Accept
     # only coordinate systems that can be inferred without guessing.
     "deepseek-vl-7b": (
-        "auto",
-        "no official grounding convention; unambiguous responses only",
+        "uncontracted_vlm_strict",
+        "no official grounding convention; strict unambiguous responses only",
     ),
     "llava-onevision-7b": (
-        "auto",
-        "not yet validated on SkyFind",
+        "uncontracted_vlm_strict",
+        "no official grounding convention; strict unambiguous responses only",
     ),
     "geochat-7b": (
         "auto",

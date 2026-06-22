@@ -12,11 +12,25 @@ except ImportError:
         return iterable
 
 from .adapters import create_adapter
-from .boxes import box_iou, parse_prediction
+from .boxes import (
+    box_iou,
+    extract_four_coordinates,
+    parse_prediction,
+    validate_box_strict,
+)
 from .coordinates import resolve_coordinate_mode
 from .data import InvalidImageError, SkyFindDataset, source_name
 from .metrics import summarize, write_summary
+from .mixed_coordinates import convert_internvl_official, convert_uncontracted_vlm
 from .prompts import build_prompt, prompt_template
+from .qwen_coordinates import load_preprocessor_config, restore_coordinates
+
+
+STRICT_NATIVE_MODES = {
+    "qwen_resized_pixel",
+    "internvl_official_mixed",
+    "uncontracted_vlm_strict",
+}
 
 
 def completed_sample_ids(path):
@@ -41,7 +55,11 @@ def _append_record(handle, record):
 
 
 def _write_or_validate_protocol(
-    args, output_path, resolved_coordinate_mode, coordinate_mode_basis
+    args,
+    output_path,
+    resolved_coordinate_mode,
+    coordinate_mode_basis,
+    qwen_config=None,
 ):
     protocol_path = Path(str(output_path) + ".meta.json")
     protocol = {
@@ -53,6 +71,11 @@ def _write_or_validate_protocol(
         "coordinate_mode_requested": args.coordinate_mode,
         "coordinate_mode": resolved_coordinate_mode,
         "coordinate_mode_basis": coordinate_mode_basis,
+        "box_validation": (
+            "strict_xyxy_no_reorder_no_clamp"
+            if resolved_coordinate_mode in STRICT_NATIVE_MODES
+            else "sanitize_reorder_and_clamp"
+        ),
         "dtype": args.dtype,
         "max_new_tokens": args.max_new_tokens,
         "attn_implementation": args.attn_implementation,
@@ -66,6 +89,11 @@ def _write_or_validate_protocol(
         protocol["llava_model_name"] = getattr(
             args, "llava_model_name", "llava_qwen"
         )
+    if qwen_config is not None:
+        protocol["qwen_preprocessor_config"] = str(
+            (Path(args.model_path) / "preprocessor_config.json").resolve()
+        )
+        protocol["qwen_resize"] = qwen_config
     if args.resume and protocol_path.exists():
         with protocol_path.open("r", encoding="utf-8") as handle:
             previous = json.load(handle)
@@ -80,6 +108,41 @@ def _write_or_validate_protocol(
             handle.write("\n")
 
 
+def _parse_response(
+    response, width, height, resolved_coordinate_mode, qwen_config=None
+):
+    if resolved_coordinate_mode == "qwen_resized_pixel":
+        values = extract_four_coordinates(response)
+        if values is None:
+            return None, resolved_coordinate_mode, {}
+        restored, processed_width, processed_height = restore_coordinates(
+            values, width, height, qwen_config
+        )
+        return (
+            validate_box_strict(restored),
+            resolved_coordinate_mode,
+            {
+                "qwen_processed_width": processed_width,
+                "qwen_processed_height": processed_height,
+            },
+        )
+    if resolved_coordinate_mode == "internvl_official_mixed":
+        box, detected_mode = convert_internvl_official(
+            extract_four_coordinates(response), width, height
+        )
+        return box, detected_mode, {}
+    if resolved_coordinate_mode == "uncontracted_vlm_strict":
+        box, detected_mode = convert_uncontracted_vlm(
+            extract_four_coordinates(response), width, height, response
+        )
+        return box, detected_mode, {}
+
+    box, detected_mode = parse_prediction(
+        response, width, height, coordinate_mode=resolved_coordinate_mode
+    )
+    return box, detected_mode, {}
+
+
 def run(args):
     dataset = SkyFindDataset(
         args.data_root,
@@ -92,11 +155,17 @@ def run(args):
     resolved_coordinate_mode, coordinate_mode_basis = resolve_coordinate_mode(
         args.model, args.coordinate_mode
     )
+    qwen_config = None
+    if resolved_coordinate_mode == "qwen_resized_pixel":
+        qwen_config = load_preprocessor_config(
+            Path(args.model_path) / "preprocessor_config.json"
+        )
     _write_or_validate_protocol(
         args,
         output_path,
         resolved_coordinate_mode,
         coordinate_mode_basis,
+        qwen_config=qwen_config,
     )
     done = completed_sample_ids(output_path) if args.resume else set()
     indices = list(range(len(dataset)))
@@ -150,11 +219,12 @@ def run(args):
             try:
                 response = adapter.generate(sample["image_path"], prompt)
                 latency = time.perf_counter() - start
-                pred_box, detected_mode = parse_prediction(
+                pred_box, detected_mode, coordinate_details = _parse_response(
                     response,
                     sample["width"],
                     sample["height"],
-                    coordinate_mode=resolved_coordinate_mode,
+                    resolved_coordinate_mode,
+                    qwen_config=qwen_config,
                 )
                 status = "ok" if pred_box is not None else "parse_error"
                 iou = box_iou(pred_box, sample["gt_box"])
@@ -169,6 +239,12 @@ def run(args):
                     "coordinate_mode_resolved": resolved_coordinate_mode,
                     "coordinate_mode_basis": coordinate_mode_basis,
                     "coordinate_mode": detected_mode,
+                    "box_validation": (
+                        "strict_xyxy_no_reorder_no_clamp"
+                        if resolved_coordinate_mode in STRICT_NATIVE_MODES
+                        else "sanitize_reorder_and_clamp"
+                    ),
+                    **coordinate_details,
                     "pred_box": pred_box,
                     "iou": iou,
                     "latency_seconds": latency,

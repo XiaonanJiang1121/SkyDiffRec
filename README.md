@@ -23,3 +23,11 @@ The strict-prompt result and Table 4 metric review is in
 [`docs/smoke_result_review_2026-06-20.md`](docs/smoke_result_review_2026-06-20.md).
 The first complete Qwen/DeepSeek result audit is in
 [`docs/full_result_review_2026-06-21.md`](docs/full_result_review_2026-06-21.md).
+
+The final-coordinate JSONL files can also be audited with
+`scripts/analyze_box_failure_modes.py`. It reports parse coverage, predicted/GT
+area-ratio statistics, normalized center error, centered-box scale/shape
+failure, and breakdowns by target size, expression length, spatial relations,
+and ordinals. `scripts/audit_qwen_postprocessing.py` separately reproduces the
+strict-versus-sanitize sensitivity check; strict is the reported policy for all
+four models.

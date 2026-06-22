@@ -1,6 +1,10 @@
 import unittest
 
-from vlm_skyfind.metrics import summarize, summarize_table4
+from vlm_skyfind.metrics import (
+    summarize,
+    summarize_table4,
+    validate_final_protocol,
+)
 
 
 def record(sample_id, status, iou):
@@ -74,6 +78,28 @@ class MetricsTest(unittest.TestCase):
                 [record("val:0", "ok", 0.8)],
                 [record("val:1", "ok", 0.8)],
             )
+
+    def test_final_qwen_protocol_rejects_provisional_pixels(self):
+        item = record("val:0", "ok", 0.8)
+        item["model"] = "qwen2.5-vl-7b"
+        item["coordinate_mode_resolved"] = "pixel"
+        with self.assertRaisesRegex(ValueError, "qwen_resized_pixel"):
+            validate_final_protocol("qwen2.5-vl-7b", [item])
+
+    def test_final_qwen_protocol_requires_strict_boxes(self):
+        item = record("val:0", "ok", 0.8)
+        item.update(
+            {
+                "model": "qwen2.5-vl-7b",
+                "coordinate_mode_resolved": "qwen_resized_pixel",
+                "box_validation": "sanitize_reorder_and_clamp",
+            }
+        )
+        with self.assertRaisesRegex(ValueError, "strict_xyxy"):
+            validate_final_protocol("qwen2.5-vl-7b", [item])
+
+        item["box_validation"] = "strict_xyxy_no_reorder_no_clamp"
+        validate_final_protocol("qwen2.5-vl-7b", [item])
 
 
 if __name__ == "__main__":

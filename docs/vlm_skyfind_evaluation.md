@@ -186,10 +186,16 @@ shown above. Both options can still be overridden explicitly.
 
 | Model | Resolved mode | Basis |
 | --- | --- | --- |
-| Qwen2.5-VL-7B | raw run: provisional `pixel`; final evaluation: `qwen_resized_pixel` | The official Qwen processor defines grounding coordinates on the resized model input; use the dedicated offline restoration below |
-| InternVL2.5-8B | `normalized_1000_or_1` | Official RefCOCO uses `[0,1000]`; saved SkyFind outputs also contain unambiguous fractional `[0,1]` boxes |
-| DeepSeek-VL-7B | `auto` | Official DeepSeek-VL release defines no grounding-coordinate contract |
-| LLaVA/GeoChat | `auto` | Deferred until their runtimes are validated |
+| Qwen2.5-VL-7B | `qwen_resized_pixel` | Restore resized-input pixels with the exact Qwen processor configuration |
+| InternVL2.5-8B | `internvl_official_mixed` | Official RefCOCO `sum(box)` branch for `[0,1]`/`[0,1000]` |
+| DeepSeek-VL-7B | `uncontracted_vlm_strict` | No official REC contract; accept only unambiguous or explicitly stated scales |
+| LLaVA-OneVision-7B | `uncontracted_vlm_strict` | No official REC contract; accept only unambiguous or explicitly stated scales |
+| GeoChat | `auto` | Removed from the reported experiment scope |
+
+The runner now applies these final native protocols directly. All four reported
+models use strict `xyxy` validation: reversed and zero-area boxes are rejected,
+while valid out-of-image boxes are retained without reordering or clamping.
+Older raw-run JSONL files must still be passed through the dedicated reparser.
 
 For final InternVL reporting, reproduce the released RefCOCO evaluator exactly:
 when the sum of the four generated coordinates is at least 4, apply the
@@ -223,7 +229,8 @@ Qwen must not use the generic original-pixel reparser for the final metric. Its
 coordinates are resized-input pixels, so `scripts/reparse_qwen_predictions.py`
 first reproduces the processor's smart-resize dimensions and then maps each box
 back to the original SkyFind image. This is an offline JSONL operation: it does
-not load model weights, read images, use PyTorch, or require a GPU.
+not load model weights, read images, use PyTorch, or require a GPU. The default
+`--box-policy strict` matches the other models; `sanitize` is audit-only.
 
 On the original inference server, prefer the exact config next to the model:
 
@@ -232,12 +239,14 @@ python scripts/reparse_qwen_predictions.py \
   --input predictions/qwen2.5-vl-7b_val_rsvg_v2_full.jsonl \
   --output predictions/qwen2.5-vl-7b_val_rsvg_v2_resized_pixel.jsonl \
   --preprocessor-config models/Qwen2.5-VL-7B-Instruct/preprocessor_config.json \
+  --box-policy strict \
   --summary-output predictions/qwen2.5-vl-7b_val_rsvg_v2_resized_pixel_summary.json
 
 python scripts/reparse_qwen_predictions.py \
   --input predictions/qwen2.5-vl-7b_test_rsvg_v2_full.jsonl \
   --output predictions/qwen2.5-vl-7b_test_rsvg_v2_resized_pixel.jsonl \
   --preprocessor-config models/Qwen2.5-VL-7B-Instruct/preprocessor_config.json \
+  --box-policy strict \
   --summary-output predictions/qwen2.5-vl-7b_test_rsvg_v2_resized_pixel_summary.json
 
 python scripts/summarize_table4.py \
@@ -252,16 +261,26 @@ versioned snapshot `configs/qwen2.5-vl-7b_preprocessor_config.json`. Do not pass
 `--min-pixels` or `--max-pixels` unless the original inference command actually
 overrode those values.
 
-DeepSeek `auto` accepts `[0,1]` coordinates and responses that explicitly state
-their scale. A four-number list that could mean either pixels or `[0,1000]` is
-marked `ambiguous` and receives no fabricated box. Do not silently switch a
-coordinate convention after seeing ground truth.
+The strict-versus-repair audit is reproducible with:
+
+```bash
+python scripts/audit_qwen_postprocessing.py \
+  --val predictions/qwen2.5-vl-7b_val_rsvg_v2_full.jsonl \
+  --test predictions/qwen2.5-vl-7b_test_rsvg_v2_full.jsonl \
+  --preprocessor-config models/Qwen2.5-VL-7B-Instruct/preprocessor_config.json \
+  --output predictions/qwen2.5-vl-7b_strict_vs_sanitize_audit.json
+```
+
+DeepSeek/LLaVA strict mode accepts `[0,1]` coordinates and responses that
+explicitly state their scale. A four-number list that could mean either pixels
+or `[0,1000]` is marked `ambiguous` and receives no fabricated box. Do not
+silently switch a coordinate convention after seeing ground truth.
 
 No shared resize is applied by the dataset or runner. Each adapter receives the
 original SkyFind image file and original width/height. Qwen, InternVL,
 LLaVA/GeoChat, and DeepSeek then perform only their required model-native image
-preprocessing. Predictions are parsed, clamped, and evaluated in the original
-SkyFind coordinate system.
+preprocessing. Predictions are restored and evaluated in the original SkyFind
+coordinate system without final box repair.
 
 ## 5. Full Val/Test Runs
 
@@ -291,6 +310,32 @@ python scripts/summarize_table4.py \
   --test predictions/qwen2.5-vl-7b_test.jsonl \
   --output predictions/qwen2.5-vl-7b_table4.json
 ```
+
+The final strict JSONL files can be analyzed together to reproduce the
+failure-mode table used in the result review:
+
+```bash
+python scripts/analyze_box_failure_modes.py \
+  --result qwen2.5-vl-7b \
+    predictions/qwen2.5-vl-7b_val_rsvg_v2_resized_pixel.jsonl \
+    predictions/qwen2.5-vl-7b_test_rsvg_v2_resized_pixel.jsonl \
+  --result internvl2.5-8b \
+    predictions/internvl2.5-8b_val_rsvg_mixed_strict.jsonl \
+    predictions/internvl2.5-8b_test_rsvg_mixed_strict.jsonl \
+  --result llava-onevision-7b \
+    predictions/llava-onevision-7b_val_rsvg_mixed_strict.jsonl \
+    predictions/llava-onevision-7b_test_rsvg_mixed_strict.jsonl \
+  --result deepseek-vl-7b \
+    predictions/deepseek-vl-7b_val_rsvg_mixed_strict.jsonl \
+    predictions/deepseek-vl-7b_test_rsvg_mixed_strict.jsonl \
+  --output predictions/vlm_failure_modes.json \
+  --markdown-output predictions/vlm_failure_modes.md
+```
+
+The script rejects provisional coordinate profiles and repaired boxes. The
+reported `scale_shape_failure_at_0.5` means that IoU remains below 0.5 even
+after aligning the prediction and GT centers, separating box size/shape errors
+from center-localization errors.
 
 ## 6. Single-GPU Execution
 
