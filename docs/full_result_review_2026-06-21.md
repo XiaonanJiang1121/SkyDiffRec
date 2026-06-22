@@ -20,14 +20,19 @@ denominator. Val contains no image errors.
 
 | Model | Val | Test | Average |
 | --- | ---: | ---: | ---: |
-| Qwen2.5-VL-7B | 32.74 / 20.38 | 37.02 / 22.62 | **34.88 / 21.50** |
+| Qwen2.5-VL-7B | 37.52 / 29.45 | 45.46 / 31.44 | **41.49 / 30.44** |
 | DeepSeek-VL-7B | 0.68 / 0.21 | 0.28 / 0.09 | **0.48 / 0.15** |
 | InternVL2.5-8B | 1.02 / 0.40 | 0.60 / 0.19 | **0.81 / 0.29** |
 | LLaVA-OneVision-7B | 1.18 / 0.36 | 0.10 / 0.03 | **0.64 / 0.20** |
 
-Qwen has a 98.28% Val parse rate and 98.83% Test parse rate. Its raw mIoU is
-28.62% on Val and 33.79% on Test. The result is a valid and strong direct-box
-zero-shot baseline under the strict RSVG prompt.
+Qwen has a 98.28% Val parse rate and 98.82% Test parse rate. Its raw mIoU is
+33.78% on Val and 40.18% on Test. The final parser reconstructs the official
+Qwen smart-resize dimensions (`patch_size * merge_size = 28`) and maps each
+generated resized-input box back to original SkyFind pixels before IoU. The
+calculation uses only the saved raw responses, original image dimensions, and
+the official processor configuration; no model inference or image loading is
+performed. The old 34.88 / 21.50 average incorrectly treated generated
+resized-input coordinates as original pixels and is superseded.
 
 DeepSeek has an even higher parse rate (98.86% Val and 99.85% Test), so its low
 IoU is not caused by the parser. Its median predicted box area is about 5.85
@@ -35,32 +40,56 @@ times the ground-truth area on Val, versus 1.11 times for Qwen. The model mostly
 returns valid `[0,1]` coordinates but localizes overly broad regions, which
 explains the low overlap.
 
-## InternVL caveat
+## Mixed-coordinate protocol audit
 
-InternVL Val contains 4,262 parsed predictions, 613 parse failures, and 125
-inference errors. All 125 inference errors are CUDA out-of-memory failures with
-roughly 2.4 GiB reserved but unallocated, consistent with allocator
-fragmentation under dynamic high-resolution tiling. These are runtime failures,
-not valid model predictions, so the current 1.02 / 0.40 Val row is provisional.
-The failed samples should be retried before reporting the final InternVL
-baseline. Test completed without model inference errors and has a 98.64% parse
-rate.
+The final mixed-coordinate pass follows two reproducibility rules used by
+published grounding systems:
 
-InternVL emits mixed coordinate scales: 552 Val and 5,451 Test responses contain
-four coordinates entirely within `[0,1]`, while most other valid responses use
-the official `[0,1000]` convention. The protocol-corrected figures above
-deterministically interpret the former as fractional coordinates and the latter as
-normalized-to-1000 coordinates. This changes Test from 0.575 / 0.180 to
-0.600 / 0.188 but does not alter the main conclusion. Coordinates above 1000
-and zero-area boxes remain parse failures rather than fabricated predictions.
+1. InternVL's official RefCOCO evaluator selects `[0,1000]` when
+   `sum(box) >= 4`, otherwise `[0,1]`, then scales to original image dimensions.
+   It does not choose a scale using ground truth and does not clamp an
+   out-of-image prediction back into the image.
+2. Kosmos-2's ICLR 2024 RefCOCO evaluator decodes only its declared location
+   representation. When no valid box is decoded, it inserts a zero-area box so
+   that the sample remains in the denominator. This supports treating an
+   undeclared or ambiguous coordinate scale as IoU zero rather than guessing.
+
+These rules are implemented by `scripts/reparse_mixed_coordinates.py`. Boxes
+must already be valid `xyxy`; the audit does not reorder reversed corners or
+clip hallucinated coordinates to the image boundary.
+
+Primary references are the [InternVL CVPR 2024 paper](https://openaccess.thecvf.com/content/CVPR2024/html/Chen_InternVL_Scaling_up_Vision_Foundation_Models_and_Aligning_for_Generic_CVPR_2024_paper.html),
+its [official RefCOCO evaluator](https://github.com/OpenGVLab/InternVL/blob/main/internvl_chat/eval/refcoco/evaluate_grounding.py),
+and the [official Kosmos-2 RefCOCO evaluator](https://github.com/microsoft/unilm/blob/master/kosmos-2/evaluation/refcoco/refexp_evaluate.py).
+
+## InternVL result
+
+InternVL Val contains 4,815 strict valid-box predictions, 60 parse failures,
+and 125 inference errors. All 125 inference errors are CUDA out-of-memory
+failures with roughly 2.4 GiB reserved but unallocated, consistent with allocator
+fragmentation under dynamic high-resolution tiling. Per the fixed evaluation
+decision, they remain in the 5,000-sample denominator as IoU zero and are not
+rerun. Therefore the reported row is final for this experiment rather than
+provisional.
+
+The official mixed parser assigns 551 Val responses to `[0,1]` and 4,324 to
+`[0,1000]`; 125 are inference errors. Test assigns 5,451 responses to `[0,1]`
+and 11,061 to `[0,1000]`, with the 34 common bad images excluded. This includes
+557 Val and 48 Test boxes containing values above 1000: the official evaluator
+still applies the `[0,1000]` branch, leaving them out of image instead of
+guessing original-pixel coordinates or clipping them. Strict valid-box parse
+rates are 96.30% Val and 98.61% Test. The metrics remain 1.02 / 0.396 and
+0.600 / 0.188, confirming that the conclusion is not driven by coordinate
+repair.
 
 ## LLaVA-OneVision result
 
 LLaVA completed both splits without inference errors after enabling expandable
 CUDA segments and releasing unused cache between samples. Val parses 86.72% of
-responses and Test parses 99.15%; the Test file also contains the same 34 bad
-image records excluded for every model. Therefore its low Test accuracy is not
-an environment or parser failure.
+responses under the earlier repairing parser. Under strict no-reorder/no-clamp
+validation, Val parses 86.54% and Test parses 98.29%; the Test file also
+contains the same 34 bad image records excluded for every model. Therefore its
+low Test accuracy is not an environment or parser failure.
 
 The principal error is box scale. Median predicted area is 11.9 times the
 ground-truth area on Val and 31.2 times on Test. `IoU@0.5` is zero for both
@@ -69,9 +98,26 @@ Test. Performance also drops sharply from Val to the maritime Test domain,
 including 0% `IoU@0.5` on MOBDrone.
 
 Most outputs use unambiguous `[0,1]` coordinates and are restored to original
-pixels correctly. The remaining 664 Val and 140 Test parse failures use numbers
-that could be percentages, normalized-to-1000 coordinates, or pixels. They are
-kept as `ambiguous` instead of selecting a scale using ground truth. Eleven Test
-responses within `[0,1]` form zero-area boxes and are also correctly rejected.
+pixels correctly. The remaining 665 Val and 129 Test boxes use bare values
+above 1 that could be percentages, normalized-to-1000 coordinates, processor
+pixels, or original pixels. LLaVA-OneVision publishes no REC coordinate
+contract, so they remain `ambiguous` and count as IoU zero. A further 8 Val and
+154 Test `[0,1]` outputs are reversed or zero-area and are rejected rather than
+repaired.
+
+As a sensitivity check, every ambiguous LLaVA box was alternatively interpreted
+under one fixed scale at a time: `[0,100]`, `[0,1000]`, or original pixels. All
+three alternatives produce exactly the same Table 4 values as the strict row;
+none of these boxes reaches a reported IoU threshold. Thus the LLaVA result is
+invariant to this unresolved subset without using a per-sample oracle.
+
+## DeepSeek result
+
+DeepSeek has 57 ambiguous Val outputs. Test has 17 ambiguous boxes and 8
+responses with no parseable coordinates; all remain in their split denominator
+as IoU zero. Strict parse rates are 98.86% Val and 99.85% Test. As with LLaVA,
+fixed sensitivity runs that interpret every ambiguous box as `[0,100]`,
+`[0,1000]`, or original pixels produce exactly the same reported metrics. The
+0.48 / 0.15 average is therefore not an artifact of choosing the strict parser.
 
 GeoChat was removed from the experiment scope and has no reported result.
