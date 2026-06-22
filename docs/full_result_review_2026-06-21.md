@@ -18,12 +18,50 @@ denominator. Val contains no image errors.
 
 ## SkyFind Table 4 results
 
-| Model | Val | Test | Average |
-| --- | ---: | ---: | ---: |
-| Qwen2.5-VL-7B | 37.52 / 29.45 | 45.46 / 31.44 | **41.49 / 30.44** |
-| DeepSeek-VL-7B | 0.68 / 0.21 | 0.28 / 0.09 | **0.48 / 0.15** |
-| InternVL2.5-8B | 1.02 / 0.40 | 0.60 / 0.19 | **0.81 / 0.29** |
-| LLaVA-OneVision-7B | 1.18 / 0.36 | 0.10 / 0.03 | **0.64 / 0.20** |
+<table>
+  <thead>
+    <tr>
+      <th rowspan="2">Model</th>
+      <th colspan="2">SkyFind Val</th>
+      <th colspan="2">SkyFind Test</th>
+      <th colspan="2">Average</th>
+    </tr>
+    <tr>
+      <th>IoU@0.5</th>
+      <th>IoU@mean</th>
+      <th>IoU@0.5</th>
+      <th>IoU@mean</th>
+      <th>IoU@0.5</th>
+      <th>IoU@mean</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Qwen2.5-VL-7B</td>
+      <td>37.52</td><td>29.45</td>
+      <td>45.46</td><td>31.44</td>
+      <td><strong>41.49</strong></td><td><strong>30.44</strong></td>
+    </tr>
+    <tr>
+      <td>DeepSeek-VL-7B</td>
+      <td>0.68</td><td>0.21</td>
+      <td>0.28</td><td>0.09</td>
+      <td><strong>0.48</strong></td><td><strong>0.15</strong></td>
+    </tr>
+    <tr>
+      <td>InternVL2.5-8B</td>
+      <td>1.02</td><td>0.40</td>
+      <td>0.60</td><td>0.19</td>
+      <td><strong>0.81</strong></td><td><strong>0.29</strong></td>
+    </tr>
+    <tr>
+      <td>LLaVA-OneVision-7B</td>
+      <td>1.18</td><td>0.36</td>
+      <td>0.10</td><td>0.03</td>
+      <td><strong>0.64</strong></td><td><strong>0.20</strong></td>
+    </tr>
+  </tbody>
+</table>
 
 Qwen has a 98.28% Val parse rate and 98.82% Test parse rate. Its raw mIoU is
 33.78% on Val and 40.18% on Test. The final parser reconstructs the official
