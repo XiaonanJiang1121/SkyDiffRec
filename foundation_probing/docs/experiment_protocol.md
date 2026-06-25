@@ -454,9 +454,10 @@ Before running SD extraction:
 
 ```text
 1. build the fixed 10% Val/Test subset manifest
-2. build a 20-50 sample smoke manifest
-3. implement the scale/grid audit script
-4. implement shared metric utilities for attention maps
+2. implement the scale/grid audit script
+3. run local CPU scale audit
+4. configure server SD v1.4 / DDIM inversion dependencies
+5. run reconstruction audit with PSNR / SSIM / LPIPS
 ```
 
 Then run Experiment 1 on the smoke subset before launching the full 10% run.

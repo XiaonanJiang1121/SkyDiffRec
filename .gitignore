@@ -30,6 +30,7 @@ checkpoints/
 /data/foundation_probe_10pct/annotations/
 /data/foundation_probe_10pct/images/
 /predictions/
+/results/
 /visualizations/
 
 # Temporary files
