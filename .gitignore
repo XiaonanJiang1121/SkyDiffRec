@@ -22,7 +22,13 @@ checkpoints/
 *.ckpt
 
 # Local datasets and generated artifacts
-/data/
+/data/*
+!/data/README.md
+!/data/foundation_probe_10pct/
+!/data/foundation_probe_10pct/README.md
+!/data/foundation_probe_10pct/subset_summary.json
+/data/foundation_probe_10pct/annotations/
+/data/foundation_probe_10pct/images/
 /predictions/
 /visualizations/
 
