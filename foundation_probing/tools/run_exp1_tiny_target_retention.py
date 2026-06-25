@@ -148,6 +148,35 @@ def compute_lpips(a, b, lpips_model, device):
         return float(lpips_model(a_tensor, b_tensor).item())
 
 
+def safe_stem(record, split):
+    index = record.get("original_index")
+    if index is None:
+        index = Path(record["fileName"]).stem
+    return f"{split}_{index}_{Path(record['fileName']).stem}"
+
+
+def save_reconstruction_images(original_512, reconstructed_512, box_512, record, split, args):
+    vis_dir = Path(args.output_dir) / "visualizations" / split
+    vis_dir.mkdir(parents=True, exist_ok=True)
+    stem = safe_stem(record, split)
+
+    left, top, right, bottom = int_crop_bounds(box_512)
+    original_crop = original_512.crop((left, top, right, bottom))
+    reconstructed_crop = reconstructed_512.crop((left, top, right, bottom))
+
+    paths = {
+        "original_512": vis_dir / f"{stem}_original_512.png",
+        "reconstruction_512": vis_dir / f"{stem}_reconstruction_512.png",
+        "target_original": vis_dir / f"{stem}_target_original.png",
+        "target_reconstruction": vis_dir / f"{stem}_target_reconstruction.png",
+    }
+    original_512.save(paths["original_512"])
+    reconstructed_512.save(paths["reconstruction_512"])
+    original_crop.save(paths["target_original"])
+    reconstructed_crop.save(paths["target_reconstruction"])
+    return {key: str(path) for key, path in paths.items()}
+
+
 class NullInversion:
     """Minimal RSVG-ZeroOV-style DDIM inversion and null-text optimization."""
 
@@ -362,6 +391,7 @@ def analyze_record(record, split, image_root, reconstruction_context):
         }
 
     reconstruction_metrics = metric_nulls()
+    visualization_paths = None
     if reconstruction_context is not None:
         inverter, lpips_model, device, args = reconstruction_context
         image_rec, _, _ = inverter.invert(
@@ -378,6 +408,15 @@ def analyze_record(record, split, image_root, reconstruction_context):
             device,
             args,
         )
+        if args.save_reconstructions:
+            visualization_paths = save_reconstruction_images(
+                image_512,
+                image_rec,
+                box_512,
+                record,
+                split,
+                args,
+            )
 
     result = {
         "sample_id": f"{split}:{record.get('original_index', record.get('index', 'unknown'))}",
@@ -412,6 +451,7 @@ def analyze_record(record, split, image_root, reconstruction_context):
             "lt_2_cells_64": cell_spans["64"]["min"] < 2.0,
         },
         "reconstruction_metrics": reconstruction_metrics,
+        "visualization_paths": visualization_paths,
     }
     return result, None
 
@@ -601,6 +641,7 @@ def parse_args():
     parser.add_argument("--splits", nargs="+", default=["val", "test"], choices=("val", "test"))
     parser.add_argument("--limit", type=int, default=None, help="Optional per-split smoke limit.")
     parser.add_argument("--run-reconstruction", action="store_true")
+    parser.add_argument("--save-reconstructions", action="store_true")
     parser.add_argument("--sd-model", default="CompVis/stable-diffusion-v1-4")
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--torch-dtype", default="float16")

@@ -122,6 +122,7 @@ reported together with target cell-span statistics.
 After configuring GPU dependencies and SD v1.4 on the server:
 
 ```bash
+cd /root/autodl-tmp/DiffusionSkyFind
 python foundation_probing/tools/run_exp1_tiny_target_retention.py \
   --splits val test \
   --output-dir results/exp_1_sd_tiny_target_retention_reconstruction \
@@ -132,7 +133,8 @@ python foundation_probing/tools/run_exp1_tiny_target_retention.py \
   --num-ddim-steps 20 \
   --guidance-scale 7.5 \
   --null-inner-steps 10 \
-  --early-stop-epsilon 1e-5
+  --early-stop-epsilon 1e-5 \
+  --save-reconstructions
 ```
 
 Recorded reconstruction metrics:
@@ -150,4 +152,3 @@ SSIM window.
 target_lpips is null when the target crop is smaller than --min-lpips-crop-size.
 full-image PSNR / SSIM / LPIPS are always recorded during reconstruction.
 ```
-
