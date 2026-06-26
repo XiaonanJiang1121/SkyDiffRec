@@ -204,13 +204,21 @@ class NullInversion:
     def scheduler(self):
         return self.model.scheduler
 
+    @staticmethod
+    def module_dtype(module):
+        return next(module.parameters()).dtype
+
+    @staticmethod
+    def scheduler_value(value, sample):
+        return value.to(device=sample.device, dtype=sample.dtype)
+
     def prev_step(self, model_output, timestep, sample):
         prev_timestep = timestep - self.scheduler.config.num_train_timesteps // self.scheduler.num_inference_steps
-        alpha_prod_t = self.scheduler.alphas_cumprod[timestep]
+        alpha_prod_t = self.scheduler_value(self.scheduler.alphas_cumprod[timestep], sample)
         alpha_prod_t_prev = (
-            self.scheduler.alphas_cumprod[prev_timestep]
+            self.scheduler_value(self.scheduler.alphas_cumprod[prev_timestep], sample)
             if prev_timestep >= 0
-            else self.scheduler.final_alpha_cumprod
+            else self.scheduler_value(self.scheduler.final_alpha_cumprod, sample)
         )
         beta_prod_t = 1 - alpha_prod_t
         pred_original_sample = (sample - beta_prod_t**0.5 * model_output) / alpha_prod_t**0.5
@@ -223,22 +231,26 @@ class NullInversion:
             timestep,
         )
         alpha_prod_t = (
-            self.scheduler.alphas_cumprod[timestep]
+            self.scheduler_value(self.scheduler.alphas_cumprod[timestep], sample)
             if timestep >= 0
-            else self.scheduler.final_alpha_cumprod
+            else self.scheduler_value(self.scheduler.final_alpha_cumprod, sample)
         )
-        alpha_prod_t_next = self.scheduler.alphas_cumprod[next_timestep]
+        alpha_prod_t_next = self.scheduler_value(self.scheduler.alphas_cumprod[next_timestep], sample)
         beta_prod_t = 1 - alpha_prod_t
         next_original_sample = (sample - beta_prod_t**0.5 * model_output) / alpha_prod_t**0.5
         next_sample_direction = (1 - alpha_prod_t_next) ** 0.5 * model_output
         return alpha_prod_t_next**0.5 * next_original_sample + next_sample_direction
 
     def get_noise_pred_single(self, latents, timestep, context):
+        latents = latents.to(device=self.device, dtype=self.module_dtype(self.model.unet))
+        context = context.to(device=self.device, dtype=self.module_dtype(self.model.text_encoder))
         return self.model.unet(latents, timestep, encoder_hidden_states=context)["sample"]
 
     def get_noise_pred(self, latents, timestep, is_forward=True, context=None):
+        latents = latents.to(device=self.device, dtype=self.module_dtype(self.model.unet))
         latents_input = self.torch.cat([latents] * 2)
         context = self.context if context is None else context
+        context = context.to(device=self.device, dtype=self.module_dtype(self.model.text_encoder))
         guidance_scale = 1 if is_forward else self.guidance_scale
         noise_pred = self.model.unet(latents_input, timestep, encoder_hidden_states=context)["sample"]
         noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
@@ -268,15 +280,17 @@ class NullInversion:
 
     def image_to_latent(self, image_512):
         with self.torch.no_grad():
-            array = np.asarray(image_512.convert("RGB"))
-            image = self.torch.from_numpy(array).float() / 127.5 - 1
-            image = image.permute(2, 0, 1).unsqueeze(0).to(self.device)
+            array = np.asarray(image_512.convert("RGB")).copy()
+            image = self.torch.from_numpy(array).permute(2, 0, 1).unsqueeze(0)
+            image = image.to(device=self.device, dtype=self.module_dtype(self.model.vae))
+            image = image / 127.5 - 1
             latents = self.model.vae.encode(image)["latent_dist"].mean
             return latents * 0.18215
 
     def latent_to_image(self, latents):
         with self.torch.no_grad():
             latents = 1 / 0.18215 * latents.detach()
+            latents = latents.to(device=self.device, dtype=self.module_dtype(self.model.vae))
             image = self.model.vae.decode(latents)["sample"]
             image = (image / 2 + 0.5).clamp(0, 1)
             image = image.cpu().permute(0, 2, 3, 1).numpy()[0]
