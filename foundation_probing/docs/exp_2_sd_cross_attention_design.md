@@ -241,8 +241,8 @@ For each selected sample and prompt variant:
 
 ```text
 1. resize image to 512 x 512 using Experiment 1 / RSVG resize policy
-2. run SD inversion / null-text optimization
-3. rerun denoising with attention capture
+2. run SD inversion / null-text optimization with the original SD attention processors
+3. rerun denoising with cross-attention capture processors registered
 4. aggregate cross-attention at 16 / 32 / 64
 5. compute metrics for target_entity, all_entities, and all_non_special maps
 6. save compact heatmap PNG/NPY for smoke

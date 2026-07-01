@@ -194,10 +194,14 @@ def attention_place(name):
     return "mid"
 
 
-def register_cross_attention_store(pipe, store):
+def restore_attention_processors(pipe, processors):
+    pipe.unet.set_attn_processor(dict(processors))
+
+
+def register_cross_attention_store(pipe, store, processor_names):
     processors = {
         name: CrossAttentionCaptureProcessor(store, attention_place(name))
-        for name in pipe.unet.attn_processors
+        for name in processor_names
     }
     pipe.unet.set_attn_processor(processors)
 
@@ -489,20 +493,25 @@ def baseline_record(item, res, args):
     }
 
 
-def run_prompt_variant(pipe, inverter, item, prompt_record, entities, args):
+def run_prompt_variant(pipe, inverter, base_attn_processors, item, prompt_record, entities, args):
     import torch
 
     record = item["record"]
-    store = CrossAttentionStore()
-    register_cross_attention_store(pipe, store)
+    processor_names = list(base_attn_processors.keys())
+    restore_attention_processors(pipe, base_attn_processors)
     _, x_t, uncond_embeddings = inverter.invert(
         item["image_512"],
         prompt_record["prompt"],
         args.null_inner_steps,
         args.early_stop_epsilon,
     )
-    run_denoising_with_attention(inverter, x_t, uncond_embeddings)
-    torch.cuda.empty_cache() if args.device.startswith("cuda") else None
+    store = CrossAttentionStore()
+    try:
+        register_cross_attention_store(pipe, store, processor_names)
+        run_denoising_with_attention(inverter, x_t, uncond_embeddings)
+    finally:
+        restore_attention_processors(pipe, base_attn_processors)
+        torch.cuda.empty_cache() if args.device.startswith("cuda") else None
 
     token_indices = map_type_indices(prompt_record)
     output_records = []
@@ -601,6 +610,7 @@ def run(args):
 
     selected, skipped = select_smoke_records(records, image_root, args.smoke_count)
     pipe, inverter = load_sd(args)
+    base_attn_processors = dict(pipe.unet.attn_processors)
     tokenizer = pipe.tokenizer
 
     all_records = []
@@ -615,7 +625,17 @@ def run(args):
                 f"{prompt_record['prompt_variant']}",
                 flush=True,
             )
-            all_records.extend(run_prompt_variant(pipe, inverter, item, prompt_record, entities, args))
+            all_records.extend(
+                run_prompt_variant(
+                    pipe,
+                    inverter,
+                    base_attn_processors,
+                    item,
+                    prompt_record,
+                    entities,
+                    args,
+                )
+            )
 
     write_jsonl(output_dir / "exp2_val_records.jsonl", all_records)
     write_jsonl(output_dir / "exp2_val_skipped.jsonl", skipped)
