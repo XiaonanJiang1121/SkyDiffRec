@@ -261,6 +261,14 @@ non-finite q/k, attention scores, or probabilities are treated as invalid
 do not sanitize non-finite attention into a heatmap
 ```
 
+Visualization rule:
+
+```text
+NPY stores the raw probability-normalized heatmap used by metrics
+PNG uses robust contrast normalization for visual inspection only
+overlay PNG is saved on the 512 image to inspect spatial alignment
+```
+
 Debug result:
 
 ```text
@@ -403,7 +411,7 @@ Do not save full attention tensors by default.
    C1 wrong object phrase.
 
 7. Storage:
-   smoke saves compact heatmap PNG/NPY.
+   smoke saves compact heatmap PNG/NPY and overlay PNG.
    full Val saves metrics by default.
 
 8. Full Val:

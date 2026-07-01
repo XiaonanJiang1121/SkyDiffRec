@@ -363,21 +363,50 @@ def compute_heatmap_metrics(heatmap, box_512):
     }
 
 
-def save_heatmap(heatmap, box_512, output_dir, stem):
+def heatmap_to_uint8(heatmap):
+    if not np.isfinite(heatmap).all():
+        raise FloatingPointError("Cannot save non-finite heatmap visualization")
+    values = heatmap.astype(np.float64)
+    lo = float(np.percentile(values, 1))
+    hi = float(np.percentile(values, 99))
+    if hi <= lo:
+        lo = float(values.min())
+        hi = float(values.max())
+    if hi <= lo:
+        scaled = np.zeros_like(values, dtype=np.float64)
+    else:
+        scaled = np.clip((values - lo) / (hi - lo), 0.0, 1.0)
+    return (scaled * 255).astype(np.uint8)
+
+
+def draw_box(image, box_512):
+    draw = ImageDraw.Draw(image)
+    draw.rectangle([float(v) for v in box_512], outline=(0, 255, 255), width=2)
+    return image
+
+
+def save_heatmap(heatmap, box_512, output_dir, stem, image_512=None):
     output_dir.mkdir(parents=True, exist_ok=True)
     npy_path = output_dir / f"{stem}.npy"
     png_path = output_dir / f"{stem}.png"
     np.save(npy_path, heatmap.astype(np.float32))
 
-    scaled = heatmap.astype(np.float64)
-    if scaled.max() > 0:
-        scaled = scaled / scaled.max()
-    gray = Image.fromarray((scaled * 255).astype(np.uint8)).resize((IMAGE_SIZE, IMAGE_SIZE), Image.Resampling.BICUBIC)
+    gray = Image.fromarray(heatmap_to_uint8(heatmap)).resize((IMAGE_SIZE, IMAGE_SIZE), Image.Resampling.BICUBIC)
     image = ImageOps.colorize(gray.convert("L"), black=(0, 0, 0), white=(255, 96, 0))
-    draw = ImageDraw.Draw(image)
-    draw.rectangle([float(v) for v in box_512], outline=(0, 255, 255), width=2)
+    image = draw_box(image, box_512)
     image.save(png_path)
-    return {"npy": str(npy_path), "png": str(png_path)}
+
+    paths = {"npy": str(npy_path), "png": str(png_path)}
+    if image_512 is not None:
+        overlay_path = output_dir / f"{stem}_overlay.png"
+        base = image_512.convert("RGB").resize((IMAGE_SIZE, IMAGE_SIZE))
+        color = ImageOps.colorize(gray.convert("L"), black=(0, 0, 0), white=(255, 96, 0))
+        alpha = gray.point(lambda value: int(value * 0.65))
+        overlay = Image.composite(color, base, alpha)
+        overlay = draw_box(overlay, box_512)
+        overlay.save(overlay_path)
+        paths["overlay_png"] = str(overlay_path)
+    return paths
 
 
 def tokenizer_spans(tokenizer, prompt, spans):
@@ -512,6 +541,7 @@ def baseline_record(item, res, args):
             item["bbox_512"],
             Path(args.output_dir) / "heatmaps" / "c0_random_baseline",
             safe_stem(record, "c0_random_baseline", res),
+            item["image_512"],
         )
     return {
         "sample_id": f"val:{record.get('original_index', record.get('index', 'unknown'))}",
@@ -569,6 +599,7 @@ def run_prompt_variant(pipe, inverter, base_attn_processors, item, prompt_record
                         item["bbox_512"],
                         Path(args.output_dir) / "heatmaps" / prompt_record["prompt_variant"],
                         safe_stem(record, prompt_record["prompt_variant"], res),
+                        item["image_512"],
                     )
             output_records.append(
                 {
