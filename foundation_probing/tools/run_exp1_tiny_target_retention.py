@@ -315,7 +315,7 @@ class NullInversion:
         uncond_embeddings_list = []
         latent_cur = latents[-1]
         for i in range(self.num_ddim_steps):
-            uncond_embeddings = uncond_embeddings.clone().detach()
+            uncond_embeddings = uncond_embeddings.clone().detach().float()
             uncond_embeddings.requires_grad = True
             optimizer = self.torch.optim.Adam([uncond_embeddings], lr=1e-2 * (1.0 - i / 100.0))
             latent_prev = latents[len(latents) - i - 2]
@@ -326,15 +326,20 @@ class NullInversion:
                 noise_pred_uncond = self.get_noise_pred_single(latent_cur, timestep, uncond_embeddings)
                 noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_cond - noise_pred_uncond)
                 latents_prev_rec = self.prev_step(noise_pred, timestep, latent_cur)
-                loss = nnf.mse_loss(latents_prev_rec, latent_prev)
+                loss = nnf.mse_loss(latents_prev_rec.float(), latent_prev.float())
+                if not self.torch.isfinite(loss):
+                    raise FloatingPointError(f"Non-finite null-text optimization loss at DDIM step {i}")
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
+                if not self.torch.isfinite(uncond_embeddings).all():
+                    raise FloatingPointError(f"Non-finite null-text embedding at DDIM step {i}")
                 if loss.item() < epsilon + i * 2e-5:
                     break
-            uncond_embeddings_list.append(uncond_embeddings[:1].detach())
+            uncond_for_denoising = uncond_embeddings.to(dtype=cond_embeddings.dtype)
+            uncond_embeddings_list.append(uncond_for_denoising[:1].detach())
             with self.torch.no_grad():
-                context = self.torch.cat([uncond_embeddings, cond_embeddings])
+                context = self.torch.cat([uncond_for_denoising, cond_embeddings])
                 latent_cur = self.get_noise_pred(latent_cur, timestep, False, context)
         return uncond_embeddings_list
 

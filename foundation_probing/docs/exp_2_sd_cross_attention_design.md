@@ -2,8 +2,8 @@
 
 Date: 2026-07-01
 
-Status: tokenizer/entity audit implemented. SD attention smoke starts after the
-audit result is reviewed.
+Status: tokenizer/entity audit implemented. SD attention smoke implementation
+is being debugged with one-sample numerical ablations before the smoke-30 run.
 
 Server project path:
 
@@ -249,8 +249,26 @@ For each selected sample and prompt variant:
 ```
 
 The capture wrapper must not replace the model's attention computation. It
-records a stable qk-softmax attention map on the side, while the UNet output is
+records the qk-softmax attention map on the side, while the UNet output is
 still produced by the original diffusers attention processor.
+
+Numerical rule:
+
+```text
+null-text optimization updates the unconditional text embedding in fp32
+loss is computed in fp32
+non-finite q/k, attention scores, or probabilities are treated as invalid
+do not sanitize non-finite attention into a heatmap
+```
+
+Debug result:
+
+```text
+float32 + null-text optimization: finite, non-uniform heatmap
+float16 + no null-text optimization: finite, non-uniform heatmap
+float16 + fp16 null-text optimization: invalid; produces non-finite q/k and
+near-uniform or NaN heatmaps
+```
 
 Prompt variants in smoke:
 
@@ -269,7 +287,21 @@ python foundation_probing/tools/run_exp2_sd_cross_attention_smoke.py \
   --output-dir results/exp_2_sd_cross_attention_smoke \
   --sd-model /root/autodl-tmp/DiffusionSkyFind/stable-diffusion-v1-4 \
   --device cuda \
+  --torch-dtype float32 \
+  --save-heatmaps
+```
+
+Fast fp16 no-null control:
+
+```bash
+cd /root/autodl-tmp/DiffusionSkyFind
+python foundation_probing/tools/run_exp2_sd_cross_attention_smoke.py \
+  --smoke-count 30 \
+  --output-dir results/exp_2_sd_cross_attention_smoke_no_null \
+  --sd-model /root/autodl-tmp/DiffusionSkyFind/stable-diffusion-v1-4 \
+  --device cuda \
   --torch-dtype float16 \
+  --null-inner-steps 0 \
   --save-heatmaps
 ```
 

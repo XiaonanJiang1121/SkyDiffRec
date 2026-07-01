@@ -82,36 +82,19 @@ def stable_attention_probs(attn, query, key, attention_mask, store, place_in_une
         scores = scores + attention_mask.float()
 
     if not torch.isfinite(scores).all():
-        store.diagnostics[f"{place_in_unet}_nonfinite_score_layers"] += 1
-
-    posinf = torch.isposinf(scores)
-    has_posinf = posinf.any(dim=-1, keepdim=True)
-    if has_posinf.any():
-        store.diagnostics[f"{place_in_unet}_posinf_score_rows"] += int(has_posinf.sum().item())
-        scores = torch.where(
-            has_posinf,
-            torch.where(posinf, torch.zeros_like(scores), torch.full_like(scores, -torch.finfo(scores.dtype).max)),
-            scores,
+        raise FloatingPointError(
+            f"Non-finite cross-attention scores at {place_in_unet}: "
+            f"shape={tuple(scores.shape)} dtype={scores.dtype}"
         )
 
-    scores = torch.nan_to_num(
-        scores,
-        nan=-torch.finfo(scores.dtype).max,
-        posinf=torch.finfo(scores.dtype).max,
-        neginf=-torch.finfo(scores.dtype).max,
-    )
     scores = scores - scores.max(dim=-1, keepdim=True).values
-    exp_scores = torch.exp(scores)
-    exp_scores = torch.where(torch.isfinite(exp_scores), exp_scores, torch.zeros_like(exp_scores))
-    normalizer = exp_scores.sum(dim=-1, keepdim=True)
-
-    empty_rows = normalizer <= 0
-    if empty_rows.any():
-        store.diagnostics[f"{place_in_unet}_empty_softmax_rows"] += int(empty_rows.sum().item())
-        exp_scores = torch.where(empty_rows, torch.ones_like(exp_scores), exp_scores)
-        normalizer = exp_scores.sum(dim=-1, keepdim=True)
-
-    return exp_scores / normalizer
+    probs = torch.softmax(scores, dim=-1)
+    if not torch.isfinite(probs).all():
+        raise FloatingPointError(
+            f"Non-finite cross-attention probabilities at {place_in_unet}: "
+            f"shape={tuple(probs.shape)} dtype={probs.dtype}"
+        )
+    return probs
 
 
 def read_json(path):
@@ -158,7 +141,7 @@ class CrossAttentionStore:
             return
         torch = __import__("torch")
         if nonfinite_inputs:
-            self.diagnostics[f"{place_in_unet}_nonfinite_qk_layers"] += 1
+            raise FloatingPointError(f"Non-finite cross-attention q/k inputs at {place_in_unet}")
         if not torch.isfinite(attention_probs).all():
             raise FloatingPointError(
                 f"Stable cross-attention capture failed at {place_in_unet}: "
@@ -218,8 +201,13 @@ class CrossAttentionCaptureProcessor:
 
             torch = __import__("torch")
             nonfinite_inputs = not torch.isfinite(query).all() or not torch.isfinite(key).all()
-            query = torch.nan_to_num(query.float(), nan=0.0, posinf=0.0, neginf=0.0)
-            key = torch.nan_to_num(key.float(), nan=0.0, posinf=0.0, neginf=0.0)
+            if nonfinite_inputs:
+                raise FloatingPointError(
+                    f"Non-finite cross-attention q/k inputs at {self.place_in_unet}: "
+                    f"query_shape={tuple(query.shape)} key_shape={tuple(key.shape)}"
+                )
+            query = query.float()
+            key = key.float()
 
             attention_mask_float = attention_mask.float() if attention_mask is not None else None
             attention_probs = stable_attention_probs(
