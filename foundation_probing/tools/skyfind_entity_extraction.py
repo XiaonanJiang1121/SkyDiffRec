@@ -318,6 +318,7 @@ REFERENCE_PREPOSITIONS = {
     "between",
     "by",
     "from",
+    "in",
     "near",
     "of",
     "on",
@@ -486,6 +487,15 @@ def previous_content_word(tokens, index):
     return None
 
 
+def previous_window_words(tokens, index, window=8):
+    start = max(0, index - window)
+    return [tokens[probe]["text"] for probe in range(start, index)]
+
+
+def sentence_break_count_before(expression, char_start):
+    return sum(1 for char in expression[:char_start] if char in ".;:")
+
+
 def next_content_word(tokens, index):
     probe = index + 1
     while probe < len(tokens):
@@ -496,7 +506,7 @@ def next_content_word(tokens, index):
     return None
 
 
-def target_score(entity, tokens):
+def target_score(entity, tokens, expression):
     score = entity["char_start"] / 1000.0
     prev_word = previous_content_word(tokens, entity["token_start"])
     next_word = next_content_word(tokens, entity["token_end"] - 1)
@@ -504,8 +514,11 @@ def target_score(entity, tokens):
         score += 20.0
     if prev_word in ATTRIBUTE_CONTEXT_WORDS:
         score += 15.0
+    if any(word in ATTRIBUTE_CONTEXT_WORDS for word in previous_window_words(tokens, entity["token_start"])):
+        score += 15.0
     if next_word in TARGET_FOLLOW_WORDS:
         score -= 5.0
+    score += 10.0 * sentence_break_count_before(expression, entity["char_start"])
     if entity["head"] in GENERIC_HEADS:
         score += 10.0
     return score
@@ -591,7 +604,7 @@ def extract_entities(expression):
     if not entities:
         return []
 
-    target = min(entities, key=lambda item: target_score(item, tokens))
+    target = min(entities, key=lambda item: target_score(item, tokens, expression))
     referring = [entity for entity in entities if entity is not target]
     referring.sort(key=lambda item: item["char_start"])
     return [target] + referring

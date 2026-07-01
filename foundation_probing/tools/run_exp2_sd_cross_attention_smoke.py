@@ -118,6 +118,11 @@ class CrossAttentionStore:
             return
         if attention_probs.shape[1] > 64**2:
             return
+        if not __import__("torch").isfinite(attention_probs).all():
+            raise FloatingPointError(
+                f"Non-finite cross-attention captured at {place_in_unet}: "
+                f"shape={tuple(attention_probs.shape)} dtype={attention_probs.dtype}"
+            )
         probs = attention_probs.detach()
         if probs.shape[0] % 2 == 0:
             probs = probs[probs.shape[0] // 2 :]
@@ -163,10 +168,11 @@ class CrossAttentionCaptureProcessor:
         key = attn.head_to_batch_dim(key)
         value = attn.head_to_batch_dim(value)
 
-        attention_probs = attn.get_attention_scores(query, key, attention_mask)
+        attention_mask_float = attention_mask.float() if attention_mask is not None else None
+        attention_probs = attn.get_attention_scores(query.float(), key.float(), attention_mask_float)
         self.store.add(attention_probs, is_cross, self.place_in_unet)
 
-        hidden_states = attention_probs.bmm(value)
+        hidden_states = attention_probs.to(dtype=value.dtype).bmm(value)
         hidden_states = attn.batch_to_head_dim(hidden_states)
         hidden_states = attn.to_out[0](hidden_states)
         hidden_states = attn.to_out[1](hidden_states)
