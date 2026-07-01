@@ -58,7 +58,8 @@ expert branch and attention branch.
 ```
 
 SkyFind first implementation follows the idea but uses a deterministic
-auditable extractor before any optional VLM/LLM entity extraction is introduced.
+auditable noun-phrase extractor before any optional VLM/LLM entity extraction
+is introduced.
 
 ## 3. Inputs
 
@@ -92,6 +93,7 @@ record bbox_was_clipped
 Code:
 
 ```text
+foundation_probing/tools/run_exp2_sd_cross_attention_smoke.py
 foundation_probing/tools/run_exp2_tokenizer_object_audit.py
 foundation_probing/tools/skyfind_entity_extraction.py
 ```
@@ -139,6 +141,8 @@ Confirmed first implementation:
 
 ```text
 use deterministic SkyFind entity extraction
+do not rely on a fixed positive object-category lexicon
+extract noun-like phrases with syntactic boundaries and spatial/function-word filtering
 extract target object + referring objects
 record target_entity as the first extracted entity
 record all_entities as the full extracted entity set
@@ -252,6 +256,19 @@ P1 / P2 / P3 / P4 / C1
 
 C0 random / uniform heatmap baseline is computed without running SD.
 
+Server smoke command:
+
+```bash
+cd /root/autodl-tmp/DiffusionSkyFind
+python foundation_probing/tools/run_exp2_sd_cross_attention_smoke.py \
+  --smoke-count 30 \
+  --output-dir results/exp_2_sd_cross_attention_smoke \
+  --sd-model /root/autodl-tmp/DiffusionSkyFind/stable-diffusion-v1-4 \
+  --device cuda \
+  --torch-dtype float16 \
+  --save-heatmaps
+```
+
 ## 9. Metrics
 
 Compute metrics on `cross16`, `cross32`, and `cross64`.
@@ -309,7 +326,7 @@ exp2_tokenizer_object_audit_summary.json
 SD attention smoke / full Val:
 
 ```text
-results/exp_2_sd_cross_attention_response/
+results/exp_2_sd_cross_attention_smoke/
 exp2_val_records.jsonl
 exp2_val_skipped.jsonl
 exp2_summary.json
@@ -318,7 +335,7 @@ exp2_summary.json
 Optional smoke heatmaps:
 
 ```text
-results/exp_2_sd_cross_attention_response/heatmaps/
+results/exp_2_sd_cross_attention_smoke/heatmaps/
 ```
 
 Do not save full attention tensors by default.
@@ -356,4 +373,3 @@ Do not save full attention tensors by default.
 8. Full Val:
    run only the best 1-2 prompt policies from smoke.
 ```
-

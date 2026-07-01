@@ -15,7 +15,14 @@ import math
 from collections import Counter, defaultdict
 from pathlib import Path
 
-from skyfind_entity_extraction import entity_set_text, extract_entities, select_wrong_phrase
+try:
+    from skyfind_entity_extraction import entity_set_text, extract_entities, select_wrong_phrase
+except ImportError:
+    from foundation_probing.tools.skyfind_entity_extraction import (
+        entity_set_text,
+        extract_entities,
+        select_wrong_phrase,
+    )
 
 
 PROMPT_PREFIX = "Locate it according to the following description. "
