@@ -1,8 +1,9 @@
 # Experiment 2 Design: SD Cross-Attention GT Response
 
-Date: 2026-06-26
+Date: 2026-07-01
 
-Status: design for review. Do not implement until details are confirmed.
+Status: tokenizer/entity audit implemented. SD attention smoke starts after the
+audit result is reviewed.
 
 Server project path:
 
@@ -13,17 +14,21 @@ Server project path:
 ## 1. Goal
 
 Experiment 2 tests whether frozen Stable Diffusion v1.4 cross-attention
-responds near the SkyFind target under several prompt variants.
+responds near the SkyFind target under several prompt policies.
 
 This experiment does not assume diffusion is the coarse module. It asks:
 
 ```text
 Can SD cross-attention provide a weak target-related spatial signal?
+Which prompt policy gives the cleanest target-related response?
 ```
+
+Experiment 2 must be completed before Experiment 3/4 because the SD denoising
+trajectory, including self-attention, is still conditioned by prompt/context.
 
 ## 2. Reference Implementation
 
-Use RSVG-ZeroOV as the first reference.
+Use RSVG-ZeroOV as the first SD attention reference.
 
 Relevant local reference files:
 
@@ -44,28 +49,28 @@ AttentionStore for UNet attention capture
 aggregate_attention(..., res=16/32/64, from_where=["down", "up"], is_cross=True)
 ```
 
-Important difference:
+LazyMCoT reference for entity extraction:
 
 ```text
-RSVG-ZeroOV is segmentation-oriented and later fuses with self-attention/SAM.
-Experiment 2 only evaluates cross-attention response near GT.
+LazyMCoT first decomposes the question into canonical entities E, including
+target and referring objects. The entity set is then used by both its visual
+expert branch and attention branch.
 ```
+
+SkyFind first implementation follows the idea but uses a deterministic
+auditable extractor before any optional VLM/LLM entity extraction is introduced.
 
 ## 3. Inputs
 
-Use the same 10% probing subset as Experiment 1:
+Use the Val split of the 10% foundation probing subset:
 
 ```text
 data/foundation_probe_10pct/annotations/Val_10pct.json
-data/foundation_probe_10pct/annotations/Test_10pct.json
 data/foundation_probe_10pct/images/
 ```
 
-For server setup, recreate or sync this data under:
-
-```text
-/root/autodl-tmp/DiffusionSkyFind/data/foundation_probe_10pct/
-```
+All exploratory experiments after Experiment 1 are Val-only first. Test is not
+used for prompt/attention design.
 
 Bad / missing images:
 
@@ -82,11 +87,73 @@ map clipped bbox to 512 for metric evaluation
 record bbox_was_clipped
 ```
 
-This matches Experiment 1 and avoids silently losing annotation information.
+## 4. Stage A: Tokenizer And Entity Audit
 
-## 4. Prompt Variants
+Code:
 
-Run each sample with the following prompt variants.
+```text
+foundation_probing/tools/run_exp2_tokenizer_object_audit.py
+foundation_probing/tools/skyfind_entity_extraction.py
+```
+
+Purpose:
+
+```text
+1. extract target object and referring objects from every expression
+2. build the confirmed prompt variants
+3. audit SD/CLIP tokenizer length and truncation
+4. record target_entity token spans and all_entities token spans
+```
+
+The audit runs on CPU and does not run Stable Diffusion.
+
+Output:
+
+```text
+results/exp_2_tokenizer_object_audit/
+```
+
+Server command:
+
+```bash
+cd /root/autodl-tmp/DiffusionSkyFind
+python foundation_probing/tools/run_exp2_tokenizer_object_audit.py \
+  --splits val \
+  --sd-model /root/autodl-tmp/DiffusionSkyFind/stable-diffusion-v1-4 \
+  --local-files-only \
+  --output-dir results/exp_2_tokenizer_object_audit
+```
+
+## 5. Entity Extraction Policy
+
+Current annotation fields:
+
+```text
+fileName / bbox / expression / source / imagePath / original_index
+```
+
+There is no object category field, so object/entity phrases must be extracted
+from the expression.
+
+Confirmed first implementation:
+
+```text
+use deterministic SkyFind entity extraction
+extract target object + referring objects
+record target_entity as the first extracted entity
+record all_entities as the full extracted entity set
+do not hide an LLM fallback in the experiment script
+```
+
+Optional later implementation:
+
+```text
+use a downloaded VLM/LLM to run LazyMCoT-style decomposition
+save its outputs as an explicit JSON/JSONL input
+audit the saved entity file before attention probing
+```
+
+## 6. Prompt Variants
 
 ### P1: Full Expression
 
@@ -94,138 +161,118 @@ Run each sample with the following prompt variants.
 {expression}
 ```
 
-Purpose:
+Tests the original SkyFind language.
+
+### P2: Entity Set
 
 ```text
-Test whether SD's CLIP text encoder responds to the original SkyFind language.
+{entity_1}, {entity_2}, ..., {entity_n}
 ```
 
-### P2: Object Phrase
+Tests whether a LazyMCoT-style object/entity list gives cleaner attention than
+the full expression.
+
+### P3: Domain Entity-Set Prompt
 
 ```text
-{object_phrase}
+a remote sensing image containing {entity_1}, {entity_2}, ..., {entity_n}
 ```
 
-Object phrase extraction should be deterministic and auditable.
+Tests whether a short remote-sensing prompt improves SD cross-attention over
+the raw entity list.
 
-Initial implementation choice:
+### P4: VLM Localization Prompt
 
 ```text
-Use a simple noun-phrase extractor only if we explicitly choose one before
-coding. Otherwise require a precomputed object_phrase field.
+Locate it according to the following description. {expression}
 ```
 
-No LLM fallback should be hidden inside the experiment script.
+This follows the VLM localization style without adding an output-format
+instruction that is irrelevant to SD.
 
-### P3: Remote-Sensing Object Prompt
+### C1: Wrong Object Phrase Control
 
 ```text
-a remote sensing image of {object_phrase}
+{wrong_object_phrase}
 ```
 
-Purpose:
+The wrong object phrase is deterministically chosen from a different coarse
+category than the target entity.
+
+## 7. Token Aggregation
+
+Primary metric map:
 
 ```text
-Test whether a short domain prompt improves SD cross-attention compared with
-raw object phrase prompting.
+aggregate cross-attention over target_entity tokens
 ```
 
-### P4: RSVG/VLM Localization Prompt
+Diagnostic entity-set map:
 
 ```text
-Locate it according to the following description.  {expression} The output
-format should be like [x1, y1, x2, y2] without any other text.
+aggregate cross-attention over all_entities tokens
 ```
 
-Purpose:
+All-token diagnostic:
 
 ```text
-Test whether the RSVG-style localization instruction changes SD attention,
-even though SD is not a box-output VLM.
+aggregate cross-attention over all non-special tokens
 ```
 
-## 5. Text Length and Token Diagnostics
+If target_entity tokens are missing, record the missing span. Do not silently
+replace target_entity with all non-special tokens for the primary metric.
 
-For each prompt variant, record:
+## 8. Stage B: SD Attention Smoke
 
-```json
-{
-  "prompt_variant": "p1_full_expression",
-  "prompt": "...",
-  "clip_token_count_with_special": 77,
-  "clip_token_count_without_special": 75,
-  "clip_truncated": true,
-  "tokens": ["..."]
-}
-```
+Run after the tokenizer/entity audit is reviewed.
 
-Stable Diffusion v1.4 uses the CLIP tokenizer length limit. Long SkyFind
-expressions may be truncated. This is a key diagnostic, not a nuisance field.
-
-Prompt splitting:
+Scale:
 
 ```text
-Do not implement RSVG-style sentence splitting in the first Experiment 2 code
-unless we explicitly decide to test it as an additional variant.
+Val stratified smoke: 30 samples
+tiny / small / large balanced when possible
 ```
 
-Reason:
+For each selected sample and prompt variant:
 
 ```text
-The first result should tell us whether the direct prompt variants are useful.
-Prompt splitting changes the question and should be a controlled ablation.
-```
-
-## 6. Attention Extraction
-
-For each sample and prompt variant:
-
-```text
-1. resize image to 512 x 512 using the same function as Experiment 1
-2. run SD inversion / null-text optimization as in Experiment 1
-3. rerun the diffusion process with AttentionStore registered
+1. resize image to 512 x 512 using Experiment 1 / RSVG resize policy
+2. run SD inversion / null-text optimization
+3. rerun denoising with attention capture
 4. aggregate cross-attention at 16 / 32 / 64
-5. save prompt-level and token-level attention tensors
+5. compute metrics for target_entity, all_entities, and all_non_special maps
+6. save compact heatmap PNG/NPY for smoke
 ```
 
-Expected raw tensor forms:
+Prompt variants in smoke:
 
 ```text
-cross16: [16, 16, token_count]
-cross32: [32, 32, token_count]
-cross64: [64, 64, token_count]
+P1 / P2 / P3 / P4 / C1
 ```
 
-Phrase aggregation:
+C0 random / uniform heatmap baseline is computed without running SD.
 
-```text
-For P1/P4, aggregate attention over selected target/object tokens if available.
-For P2/P3, aggregate over all non-special tokens of the object phrase.
-```
+## 9. Metrics
 
-If token selection is not available for P1/P4, use all non-special tokens for
-the first implementation and record:
+Compute metrics on `cross16`, `cross32`, and `cross64`.
 
-```json
-"token_selection_policy": "all_non_special_tokens"
-```
-
-## 7. Metrics
-
-Compute metrics on each attention resolution separately, and optionally on a
-simple average of upsampled maps.
-
-Metrics:
+Core metrics:
 
 ```text
 Pointing Game:
   attention peak inside GT_512
 
 Top-k Hit:
-  top 1%, 5%, 10% attention pixels overlap GT_512
+  top 1%, 5%, 10% attention cells overlap GT_512
 
 GT Attention Ratio:
   sum attention inside GT_512 / sum attention full map
+
+GT Area Ratio:
+  GT grid area / full grid area
+
+Attention Enrichment:
+  GT Attention Ratio / GT Area Ratio
 
 Peak Center Distance:
   distance(attention peak, GT center) / GT diagonal
@@ -234,137 +281,79 @@ Entropy / Peakness:
   diagnose diffuse attention
 ```
 
-Heatmap-to-box IoU:
+Heatmap-to-box IoU is diagnostic only. It is not the primary Experiment 2
+metric.
+
+## 10. Stage C: Full Val
+
+Run only after smoke identifies the best prompt policies.
+
+Confirmed policy:
 
 ```text
-Not primary in Experiment 2.
-If implemented, report as diagnostic only and do not over-interpret it as final
-REC performance.
+full Val uses only the best 1-2 prompt policies
+full Val saves metrics by default
+full Val does not save compact heatmaps unless explicitly requested
 ```
 
-## 8. Controls
+## 11. Outputs
 
-Run controls on a smaller subset first because each control multiplies SD
-inversion cost.
-
-Required controls for a smoke run:
+Tokenizer/entity audit:
 
 ```text
-C1 same image + wrong noun
-C2 same image + generic prompt
-C3 wrong image + same expression
+results/exp_2_tokenizer_object_audit/
+exp2_val_tokenizer_object_audit.jsonl
+exp2_tokenizer_object_audit_summary.json
 ```
 
-Suggested formal control strategy:
-
-```text
-run controls on 20-50 samples first
-expand only if positive attention response appears meaningful
-```
-
-Controls should write the same metric schema as positive prompts and include:
-
-```json
-"is_control": true
-```
-
-## 9. Outputs
-
-Suggested output directory:
+SD attention smoke / full Val:
 
 ```text
 results/exp_2_sd_cross_attention_response/
-```
-
-Files:
-
-```text
 exp2_val_records.jsonl
-exp2_test_records.jsonl
 exp2_val_skipped.jsonl
-exp2_test_skipped.jsonl
 exp2_summary.json
 ```
 
-Large tensors:
+Optional smoke heatmaps:
 
 ```text
-results/exp_2_sd_cross_attention_response/attention_tensors/
+results/exp_2_sd_cross_attention_response/heatmaps/
 ```
 
-Tensor files should be ignored by git.
+Do not save full attention tensors by default.
 
-Per-record fields:
-
-```json
-{
-  "sample_id": "val:0",
-  "split": "val",
-  "file_name": "...jpg",
-  "source": "UAVDT",
-  "prompt_variant": "p1_full_expression",
-  "prompt": "...",
-  "clip_truncated": false,
-  "gt_box_raw": [x1, y1, x2, y2],
-  "gt_box_clipped": [x1, y1, x2, y2],
-  "bbox_512": [x1, y1, x2, y2],
-  "target_width_512": 0.0,
-  "target_height_512": 0.0,
-  "attention_paths": {
-    "cross16": "...pt",
-    "cross32": "...pt",
-    "cross64": "...pt"
-  },
-  "metrics": {
-    "cross16": {},
-    "cross32": {},
-    "cross64": {}
-  }
-}
-```
-
-## 10. Implementation Boundaries
-
-Follow the current code-writing rules:
+## 12. Confirmed Decisions
 
 ```text
-skip bad / missing images and record them
-preserve raw bbox and use clipped bbox for visible-region metrics
-do not silently repair prompts
-do not silently replace failed object phrase extraction
-do not add SAM
-do not add self-attention fusion
-do not add crop variants
-do not add heatmap-to-box as a primary metric
-```
+1. Object phrase/entity source:
+   deterministic LazyMCoT-inspired SkyFind entity extractor first.
+   optional VLM/LLM entity extraction must be saved as explicit input later.
 
-Experiment 2 should be implemented as a new script only after this design is
-confirmed:
+2. Extracted phrases:
+   extract all objects in the expression, including target and referring objects.
+   record target_entity and all_entities separately.
 
-```text
-foundation_probing/tools/run_exp2_sd_cross_attention_response.py
-```
+3. VLM localization prompt:
+   "Locate it according to the following description. {expression}"
 
-## 11. Decisions Needed Before Coding
+4. Prompt splitting:
+   run tokenizer audit first.
+   do not add RSVG-style split prompt to the first SD attention smoke.
 
-Please confirm these details before implementation:
+5. Scale:
+   Val-only exploratory experiments.
+   smoke first with 30 samples.
 
-```text
-1. Object phrase source:
-   a) require precomputed object_phrase field
-   b) use a deterministic local noun-phrase extractor
-   c) skip P2/P3 in the first implementation
+6. Controls:
+   C0 random / uniform baseline.
+   C1 wrong object phrase.
 
-2. Prompt splitting:
-   a) no splitting in first implementation
-   b) add RSVG-style split prompt as P5
+7. Storage:
+   smoke saves compact heatmap PNG/NPY.
+   full Val saves metrics by default.
 
-3. Controls:
-   a) smoke controls only first
-   b) controls for the full 10% subset
-
-4. Attention tensor storage:
-   a) save full token-level cross16/32/64 tensors
-   b) save only phrase-aggregated heatmaps plus token diagnostics
+8. Full Val:
+   run only the best 1-2 prompt policies from smoke.
 ```
 
