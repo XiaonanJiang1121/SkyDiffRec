@@ -75,6 +75,45 @@ METRIC_KEYS = (
 )
 
 
+def stable_attention_probs(attn, query, key, attention_mask, store, place_in_unet):
+    torch = __import__("torch")
+    scores = torch.bmm(query.float(), key.float().transpose(1, 2)) * float(attn.scale)
+    if attention_mask is not None:
+        scores = scores + attention_mask.float()
+
+    if not torch.isfinite(scores).all():
+        store.diagnostics[f"{place_in_unet}_nonfinite_score_layers"] += 1
+
+    posinf = torch.isposinf(scores)
+    has_posinf = posinf.any(dim=-1, keepdim=True)
+    if has_posinf.any():
+        store.diagnostics[f"{place_in_unet}_posinf_score_rows"] += int(has_posinf.sum().item())
+        scores = torch.where(
+            has_posinf,
+            torch.where(posinf, torch.zeros_like(scores), torch.full_like(scores, -torch.finfo(scores.dtype).max)),
+            scores,
+        )
+
+    scores = torch.nan_to_num(
+        scores,
+        nan=-torch.finfo(scores.dtype).max,
+        posinf=torch.finfo(scores.dtype).max,
+        neginf=-torch.finfo(scores.dtype).max,
+    )
+    scores = scores - scores.max(dim=-1, keepdim=True).values
+    exp_scores = torch.exp(scores)
+    exp_scores = torch.where(torch.isfinite(exp_scores), exp_scores, torch.zeros_like(exp_scores))
+    normalizer = exp_scores.sum(dim=-1, keepdim=True)
+
+    empty_rows = normalizer <= 0
+    if empty_rows.any():
+        store.diagnostics[f"{place_in_unet}_empty_softmax_rows"] += int(empty_rows.sum().item())
+        exp_scores = torch.where(empty_rows, torch.ones_like(exp_scores), exp_scores)
+        normalizer = exp_scores.sum(dim=-1, keepdim=True)
+
+    return exp_scores / normalizer
+
+
 def read_json(path):
     return json.loads(Path(path).read_text(encoding="utf-8"))
 
@@ -112,15 +151,17 @@ def summarize_values(values):
 class CrossAttentionStore:
     def __init__(self):
         self.maps = defaultdict(list)
+        self.diagnostics = defaultdict(int)
 
-    def add(self, attention_probs, is_cross, place_in_unet):
-        if not is_cross:
-            return
+    def add(self, attention_probs, place_in_unet, nonfinite_inputs=False):
         if attention_probs.shape[1] > 64**2:
             return
-        if not __import__("torch").isfinite(attention_probs).all():
+        torch = __import__("torch")
+        if nonfinite_inputs:
+            self.diagnostics[f"{place_in_unet}_nonfinite_qk_layers"] += 1
+        if not torch.isfinite(attention_probs).all():
             raise FloatingPointError(
-                f"Non-finite cross-attention captured at {place_in_unet}: "
+                f"Stable cross-attention capture failed at {place_in_unet}: "
                 f"shape={tuple(attention_probs.shape)} dtype={attention_probs.dtype}"
             )
         probs = attention_probs.detach()
@@ -130,60 +171,66 @@ class CrossAttentionStore:
 
 
 class CrossAttentionCaptureProcessor:
-    def __init__(self, store, place_in_unet):
+    def __init__(self, store, place_in_unet, base_processor):
         self.store = store
         self.place_in_unet = place_in_unet
+        self.base_processor = base_processor
 
     def __call__(self, attn, hidden_states, encoder_hidden_states=None, attention_mask=None, temb=None):
-        residual = hidden_states
-        is_cross = encoder_hidden_states is not None
-
-        if attn.spatial_norm is not None:
-            hidden_states = attn.spatial_norm(hidden_states, temb)
-
-        input_ndim = hidden_states.ndim
-        if input_ndim == 4:
-            batch_size, channel, height, width = hidden_states.shape
-            hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
-
-        batch_size, sequence_length, _ = (
-            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
+        self.capture(attn, hidden_states, encoder_hidden_states, attention_mask, temb)
+        return self.base_processor(
+            attn,
+            hidden_states,
+            encoder_hidden_states,
+            attention_mask,
+            temb,
         )
-        attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
 
-        if attn.group_norm is not None:
-            hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
+    def capture(self, attn, hidden_states, encoder_hidden_states=None, attention_mask=None, temb=None):
+        is_cross = encoder_hidden_states is not None
+        if not is_cross:
+            return
 
-        query = attn.to_q(hidden_states)
+        with __import__("torch").no_grad():
+            if attn.spatial_norm is not None:
+                hidden_states = attn.spatial_norm(hidden_states, temb)
 
-        if encoder_hidden_states is None:
-            encoder_hidden_states = hidden_states
-        elif attn.norm_cross:
-            encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
+            input_ndim = hidden_states.ndim
+            if input_ndim == 4:
+                batch_size, channel, height, width = hidden_states.shape
+                hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
 
-        key = attn.to_k(encoder_hidden_states)
-        value = attn.to_v(encoder_hidden_states)
+            batch_size, sequence_length, _ = encoder_hidden_states.shape
+            attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
 
-        query = attn.head_to_batch_dim(query)
-        key = attn.head_to_batch_dim(key)
-        value = attn.head_to_batch_dim(value)
+            if attn.group_norm is not None:
+                hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
-        attention_mask_float = attention_mask.float() if attention_mask is not None else None
-        attention_probs = attn.get_attention_scores(query.float(), key.float(), attention_mask_float)
-        self.store.add(attention_probs, is_cross, self.place_in_unet)
+            query = attn.to_q(hidden_states)
 
-        hidden_states = attention_probs.to(dtype=value.dtype).bmm(value)
-        hidden_states = attn.batch_to_head_dim(hidden_states)
-        hidden_states = attn.to_out[0](hidden_states)
-        hidden_states = attn.to_out[1](hidden_states)
+            if attn.norm_cross:
+                encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
 
-        if input_ndim == 4:
-            hidden_states = hidden_states.transpose(-1, -2).reshape(batch_size, channel, height, width)
+            key = attn.to_k(encoder_hidden_states)
 
-        if attn.residual_connection:
-            hidden_states = hidden_states + residual
+            query = attn.head_to_batch_dim(query)
+            key = attn.head_to_batch_dim(key)
 
-        return hidden_states / attn.rescale_output_factor
+            torch = __import__("torch")
+            nonfinite_inputs = not torch.isfinite(query).all() or not torch.isfinite(key).all()
+            query = torch.nan_to_num(query.float(), nan=0.0, posinf=0.0, neginf=0.0)
+            key = torch.nan_to_num(key.float(), nan=0.0, posinf=0.0, neginf=0.0)
+
+            attention_mask_float = attention_mask.float() if attention_mask is not None else None
+            attention_probs = stable_attention_probs(
+                attn,
+                query,
+                key,
+                attention_mask_float,
+                self.store,
+                self.place_in_unet,
+            )
+            self.store.add(attention_probs, self.place_in_unet, nonfinite_inputs)
 
 
 def attention_place(name):
@@ -200,7 +247,7 @@ def restore_attention_processors(pipe, processors):
 
 def register_cross_attention_store(pipe, store, processor_names):
     processors = {
-        name: CrossAttentionCaptureProcessor(store, attention_place(name))
+        name: CrossAttentionCaptureProcessor(store, attention_place(name), pipe.unet.attn_processors[name])
         for name in processor_names
     }
     pipe.unet.set_attn_processor(processors)
@@ -514,6 +561,7 @@ def run_prompt_variant(pipe, inverter, base_attn_processors, item, prompt_record
         torch.cuda.empty_cache() if args.device.startswith("cuda") else None
 
     token_indices = map_type_indices(prompt_record)
+    attention_capture_diagnostics = dict(store.diagnostics)
     output_records = []
     for res in args.resolutions:
         attention_map = aggregate_cross_attention(store, res)
@@ -560,6 +608,7 @@ def run_prompt_variant(pipe, inverter, base_attn_processors, item, prompt_record
                     "resolution": res,
                     "token_indices": token_indices[map_type],
                     "tokenizer": prompt_record["tokenizer"],
+                    "attention_capture_diagnostics": attention_capture_diagnostics,
                     "metrics": metrics,
                     "heatmap_paths": heatmap_paths,
                 }
@@ -581,6 +630,16 @@ def build_summary(records, skipped, args):
             for key in METRIC_KEYS
         }
 
+    attention_capture_diagnostics = defaultdict(int)
+    seen_prompt_sample = set()
+    for record in records:
+        key = (record.get("sample_id"), record.get("prompt_variant"))
+        if key in seen_prompt_sample:
+            continue
+        seen_prompt_sample.add(key)
+        for name, value in record.get("attention_capture_diagnostics", {}).items():
+            attention_capture_diagnostics[name] += int(value)
+
     return {
         "experiment": "exp_2_sd_cross_attention_smoke",
         "split": "val",
@@ -594,6 +653,7 @@ def build_summary(records, skipped, args):
         "num_ddim_steps": args.num_ddim_steps,
         "guidance_scale": args.guidance_scale,
         "null_inner_steps": args.null_inner_steps,
+        "attention_capture_diagnostics": dict(sorted(attention_capture_diagnostics.items())),
         "by_prompt_map_resolution": by_prompt_map_resolution,
     }
 
