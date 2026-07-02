@@ -158,6 +158,15 @@ Do not save heatmaps for full Val unless manually inspecting a smoke run.
 
 ## 8. Full Val Command
 
+The command below runs both cross-attention and self-attention probes because
+it explicitly includes:
+
+```text
+--probe-types cross self
+```
+
+If `--probe-types` is omitted, the script runs cross-attention only.
+
 ```bash
 cd /root/autodl-tmp/DiffusionSkyFind
 python foundation_probing/tools/run_exp4_full_vs_crop_attention.py \

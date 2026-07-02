@@ -59,9 +59,24 @@ is_cross = False for self-attention
 Important implementation change:
 
 ```text
-Do not save full self-attention tensors.
+Do not save per-layer / per-head / per-step raw self-attention tensors.
 At 64 x 64, a full self-attention map is 4096 x 4096 per head/layer/step and
 is too large for full-subset probing.
+```
+
+Debug matrix policy:
+
+```text
+By default, the script only saves row-derived compact heatmaps and metrics.
+For debugging, use --save-self-attention-matrices to save the averaged full
+self-attention matrix for selected resolutions.
+
+Recommended first debug setting:
+  --save-self-attention-matrices --self-matrix-resolutions 64
+
+This saves one averaged self64 matrix per sample, shaped [4096, 4096]. It is
+large but useful for checking where the self-attention structure fails. It does
+not save per-layer / per-head / per-step raw matrices.
 ```
 
 Instead, implement a row-only self-attention probe:
@@ -377,6 +392,8 @@ python foundation_probing/tools/run_exp3_sd_self_attention_structure.py \
   --torch-dtype float16 \
   --prompt-policy full_expression \
   --control-types gt_center random_background \
+  --save-self-attention-matrices \
+  --self-matrix-resolutions 64 \
   --resolutions 16 32 64
 ```
 
@@ -443,5 +460,6 @@ Current implementation choices:
 2. Scale: Val 10% full set, 502 samples.
 3. Seed policy: center_cell by default; all_gt_cells available as diagnostic.
 4. Controls: GT center + random background seed.
-5. Saved artifacts: metrics by default; compact heatmaps only with --save-heatmaps.
+5. Saved artifacts: metrics by default; compact heatmaps with --save-heatmaps;
+   averaged full self-attention matrices with --save-self-attention-matrices.
 ```

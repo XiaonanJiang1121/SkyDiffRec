@@ -107,11 +107,34 @@ def finite_softmax_rows(attn, query_rows, key, attention_mask, place_in_unet):
     return probs
 
 
+def finite_softmax_matrix(attn, query, key, attention_mask, place_in_unet, chunk_size):
+    torch = __import__("torch")
+    chunks = []
+    for start in range(0, query.shape[1], chunk_size):
+        end = min(query.shape[1], start + chunk_size)
+        probs = finite_softmax_rows(
+            attn,
+            query[:, start:end, :],
+            key,
+            attention_mask,
+            place_in_unet,
+        )
+        chunks.append(probs.mean(dim=0).detach().cpu())
+    matrix = torch.cat(chunks, dim=0)
+    if not torch.isfinite(matrix).all():
+        raise FloatingPointError(f"Non-finite aggregated self-attention matrix at {place_in_unet}")
+    return matrix
+
+
 class SelfAttentionRowStore:
-    def __init__(self, seed_indices_by_control, resolutions):
+    def __init__(self, seed_indices_by_control, resolutions, matrix_resolutions=(), matrix_chunk_size=256):
         self.seed_indices_by_control = seed_indices_by_control
         self.resolutions = set(int(res) for res in resolutions)
+        self.matrix_resolutions = set(int(res) for res in matrix_resolutions)
+        self.matrix_chunk_size = int(matrix_chunk_size)
         self.rows = defaultdict(list)
+        self.matrix_sums = {}
+        self.matrix_counts = defaultdict(int)
 
     def add(self, control_type, res, row_probs):
         if row_probs.shape[-1] != res * res:
@@ -128,6 +151,22 @@ class SelfAttentionRowStore:
             raise FloatingPointError(f"Invalid self-attention heatmap total for {control_type} r{res}")
         heatmap = (vector / total).reshape(res, res)
         return heatmap.astype(np.float32)
+
+    def add_matrix(self, res, matrix):
+        if matrix.shape != (res * res, res * res):
+            raise ValueError(f"Self-attention matrix shape does not match resolution {res}")
+        matrix = matrix.detach().float().cpu()
+        if res not in self.matrix_sums:
+            self.matrix_sums[res] = matrix.clone()
+        else:
+            self.matrix_sums[res] += matrix
+        self.matrix_counts[res] += 1
+
+    def aggregate_matrix(self, res):
+        if res not in self.matrix_sums:
+            return None
+        matrix = self.matrix_sums[res] / float(self.matrix_counts[res])
+        return matrix.numpy()
 
 
 class SelfAttentionRowCaptureProcessor:
@@ -200,6 +239,17 @@ class SelfAttentionRowCaptureProcessor:
                 )
                 row = probs.mean(dim=(0, 1))
                 self.store.add(control_type, res, row)
+
+            if res in self.store.matrix_resolutions:
+                matrix = finite_softmax_matrix(
+                    attn,
+                    query,
+                    key,
+                    attention_mask_float,
+                    self.place_in_unet,
+                    self.store.matrix_chunk_size,
+                )
+                self.store.add_matrix(res, matrix)
 
 
 def register_self_attention_store(pipe, store, processor_names):
@@ -326,6 +376,28 @@ def safe_stem(record, control_type, res):
     return f"val_{index}_{Path(record['fileName']).stem}_{control_type}_self{res}"
 
 
+def matrix_stem(record, res):
+    index = record.get("original_index", "unknown")
+    return f"val_{index}_{Path(record['fileName']).stem}_self_matrix{res}"
+
+
+def save_self_attention_matrices(store, record, args):
+    if not args.save_self_attention_matrices:
+        return {}
+    output_dir = Path(args.output_dir) / "self_attention_matrices"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    dtype = np.float16 if args.self_matrix_dtype == "float16" else np.float32
+    paths = {}
+    for res in args.self_matrix_resolutions:
+        matrix = store.aggregate_matrix(int(res))
+        if matrix is None:
+            continue
+        path = output_dir / f"{matrix_stem(record, int(res))}.npy"
+        np.save(path, matrix.astype(dtype))
+        paths[str(int(res))] = str(path)
+    return paths
+
+
 def run_item(pipe, inverter, base_attn_processors, item, args):
     import torch
 
@@ -342,13 +414,21 @@ def run_item(pipe, inverter, base_attn_processors, item, args):
 
     seed = args.seed + int(record.get("original_index", 0)) * 1009
     seed_indices = build_seed_indices(item["bbox_512"], args.resolutions, args.control_types, seed)
-    store = SelfAttentionRowStore(seed_indices, args.resolutions)
+    matrix_resolutions = args.self_matrix_resolutions if args.save_self_attention_matrices else []
+    store = SelfAttentionRowStore(
+        seed_indices,
+        args.resolutions,
+        matrix_resolutions=matrix_resolutions,
+        matrix_chunk_size=args.self_matrix_chunk_size,
+    )
     try:
         register_self_attention_store(pipe, store, processor_names)
         run_denoising(inverter, x_t, uncond_embeddings)
     finally:
         restore_attention_processors(pipe, base_attn_processors)
         torch.cuda.empty_cache() if args.device.startswith("cuda") else None
+
+    self_attention_matrix_paths = save_self_attention_matrices(store, record, args)
 
     records = []
     for control_type in args.control_types:
@@ -391,6 +471,7 @@ def run_item(pipe, inverter, base_attn_processors, item, args):
                     "target_size_bucket": item["target_size_bucket"],
                     "metrics": metrics,
                     "heatmap_paths": heatmap_paths,
+                    "self_attention_matrix_path": self_attention_matrix_paths.get(str(int(res))),
                 }
             )
     return records
@@ -421,6 +502,9 @@ def build_summary(records, skipped, args):
         "num_ddim_steps": args.num_ddim_steps,
         "guidance_scale": args.guidance_scale,
         "null_inner_steps": args.null_inner_steps,
+        "save_self_attention_matrices": args.save_self_attention_matrices,
+        "self_matrix_resolutions": list(args.self_matrix_resolutions),
+        "self_matrix_dtype": args.self_matrix_dtype,
         "by_control_resolution": by_control_resolution,
     }
 
@@ -473,6 +557,10 @@ def parse_args():
     parser.add_argument("--prompt-policy", default="full_expression", choices=PROMPT_POLICIES)
     parser.add_argument("--control-types", nargs="+", default=["gt_center", "random_background"], choices=CONTROL_TYPES)
     parser.add_argument("--save-heatmaps", action="store_true")
+    parser.add_argument("--save-self-attention-matrices", action="store_true")
+    parser.add_argument("--self-matrix-resolutions", nargs="+", type=int, default=[64])
+    parser.add_argument("--self-matrix-dtype", default="float16", choices=("float16", "float32"))
+    parser.add_argument("--self-matrix-chunk-size", type=int, default=256)
     parser.add_argument("--seed", type=int, default=20260702)
     return parser.parse_args()
 
