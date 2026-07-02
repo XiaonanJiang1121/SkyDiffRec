@@ -1,0 +1,83 @@
+{
+  "seed": 20260625,
+  "fraction": 0.1,
+  "image_mode": "symlink",
+  "splits": {
+    "val": {
+      "total_records": 5000,
+      "selected_records": 502,
+      "unique_images": 494,
+      "missing_image_count": 0,
+      "per_source": {
+        "AUAIR": {
+          "total": 233,
+          "selected": 23
+        },
+        "Aeroscapes": {
+          "total": 16,
+          "selected": 2
+        },
+        "CAPRK": {
+          "total": 400,
+          "selected": 40
+        },
+        "DroneVehicle": {
+          "total": 565,
+          "selected": 57
+        },
+        "Okutama-action": {
+          "total": 137,
+          "selected": 14
+        },
+        "Semantic": {
+          "total": 31,
+          "selected": 3
+        },
+        "Stanford": {
+          "total": 53,
+          "selected": 5
+        },
+        "UAVDT": {
+          "total": 447,
+          "selected": 45
+        },
+        "UDD": {
+          "total": 25,
+          "selected": 3
+        },
+        "UVSD": {
+          "total": 600,
+          "selected": 60
+        },
+        "Uavid": {
+          "total": 70,
+          "selected": 7
+        },
+        "Visdrone": {
+          "total": 1477,
+          "selected": 148
+        },
+        "unknown": {
+          "total": 946,
+          "selected": 95
+        }
+      }
+    },
+    "test": {
+      "total_records": 16546,
+      "selected_records": 1655,
+      "unique_images": 1346,
+      "missing_image_count": 0,
+      "per_source": {
+        "MOBDrone": {
+          "total": 1976,
+          "selected": 198
+        },
+        "SeaDronesSee": {
+          "total": 14570,
+          "selected": 1457
+        }
+      }
+    }
+  }
+}
