@@ -70,6 +70,15 @@ foundation_probing/
     experiment_protocol.md
     paper_design_sync.md
     source_context.md
+    exp_2_sd_cross_attention_design.md
+    exp_3_sd_self_attention_structure_design.md
+    exp_4_full_vs_crop_attention_design.md
+  tools/
+    run_exp1_tiny_target_retention.py
+    run_exp2_tokenizer_object_audit.py
+    run_exp2_sd_cross_attention_smoke.py
+    run_exp3_sd_self_attention_structure.py
+    run_exp4_full_vs_crop_attention.py
   configs/
     README.md
   reports/

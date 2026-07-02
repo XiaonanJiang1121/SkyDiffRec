@@ -367,9 +367,10 @@ E. diffusion-generated / attention-proposed crop -> 512x512
 Evaluate:
 
 ```text
-SD cross-attention
-SD self-attention oracle
-cross/self compatibility
+current implementation: SD cross-attention with full expression
+current implementation: SD self-attention GT-center row probe
+recorded diagnostic: simple reconstruction MSE / PSNR per context
+later extension: cross/self compatibility score
 heatmap-to-box only as a diagnostic conversion
 ```
 
@@ -443,9 +444,9 @@ Result paths:
 
 ```text
 results/exp_1_sd_tiny_target_retention/
-results/exp_2_sd_cross_attention_response/
-results/exp_3_sd_self_attention_structure/
-results/exp_4_full_vs_crop/
+results/exp_2_sd_cross_attention_val_full/
+results/exp_3_sd_self_attention_structure_val_full/
+results/exp_4_full_vs_crop_attention_val_full/
 ```
 
 ## 12. Immediate Next Step
